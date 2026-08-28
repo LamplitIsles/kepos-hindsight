@@ -39,6 +39,11 @@ function clientFor(config: ResolvedCompanionConfig): HindsightClient {
   return new HindsightClient(config.apiUrl, config.bankId, config.apiToken);
 }
 
+function fallbackRuntime(pluginConfig: DshPluginConfig): ResolvedCompanionConfig | undefined {
+  const config = resolveCompanionConfig(pluginConfig);
+  return config.enabled ? config : undefined;
+}
+
 function timeoutSignal(parent: AbortSignal | undefined, timeoutMs: number): AbortSignal {
   const timeout = AbortSignal.timeout(timeoutMs);
   return parent ? AbortSignal.any([parent, timeout]) : timeout;
@@ -144,13 +149,15 @@ function textOutput(value: string): Array<{ type: "text"; text: string }> {
 }
 
 function registerTools(toolContext: ToolContext, pluginConfig: DshPluginConfig): void {
+  const fallback = fallbackRuntime(pluginConfig);
+  if (!fallback) return;
   toolContext.tools.register({
     name: "hindsight_recall",
     description: "Look up raw historical memories relevant to a question. Use it for a specific past fact or preference; it does not call an LLM or change the bank.",
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
     async execute(args: { query: string }, execution: { agent?: AgentLike }) {
-      const config = execution.agent ? runtimeFor(execution.agent, pluginConfig) : undefined;
+      const config = execution.agent ? runtimeFor(execution.agent, pluginConfig) : fallback;
       if (!config) return "Hindsight companion memory is unavailable in this session.";
       const memories = await clientFor(config).recall(args.query, config.recall, timeoutSignal(undefined, config.recall.timeoutMs));
       return memories.length
@@ -165,7 +172,7 @@ function registerTools(toolContext: ToolContext, pluginConfig: DshPluginConfig):
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
     async execute(args: { query: string }, execution: { agent?: AgentLike }) {
-      const config = execution.agent ? runtimeFor(execution.agent, pluginConfig) : undefined;
+      const config = execution.agent ? runtimeFor(execution.agent, pluginConfig) : fallback;
       if (!config) return "Hindsight companion memory is unavailable in this session.";
       return (await clientFor(config).reflect(args.query, timeoutSignal(undefined, 30_000))) || "No memory synthesis was returned.";
     }

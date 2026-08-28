@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createDshHooks } from "../src/dsh.js";
+import { apply, createDshHooks } from "../src/dsh.js";
 
 async function configFile(config: unknown): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "kepos-hindsight-dsh-"));
@@ -97,5 +97,22 @@ describe("DSH hooks", () => {
     hooks.disposed({ agent });
     hooks.turnStopping({ agent, turn: 1 });
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("makes hindsight_recall available when DSH invokes a tool without an agent execution field", async () => {
+    const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({
+      results: [{ text: "Neil likes concise Chinese.", type: "observation" }]
+    })));
+    globalThis.fetch = fetch;
+    const tools: Array<{ name: string; execute: (args: { query: string }, execution: object) => Promise<string> }> = [];
+
+    apply({
+      on: () => undefined,
+      inject: (_services, callback) => callback({ tools: { register: (tool) => tools.push(tool as typeof tools[number]) } })
+    }, { configPath });
+
+    const recall = tools.find((tool) => tool.name === "hindsight_recall");
+    await expect(recall?.execute({ query: "reply preference" }, {})).resolves.toContain("Neil likes concise Chinese.");
   });
 });
