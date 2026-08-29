@@ -1,0 +1,126 @@
+.kepos-hindsight-card {
+  display: grid;
+  gap: 12px;
+  max-width: 640px;
+  padding: 18px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-specific-input-major);
+  box-shadow: var(--dsw-shadow-lv1);
+}
+
+.kepos-hindsight-eyebrow {
+  margin: 0;
+  color: var(--dsw-alias-label-caption);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 16px;
+}
+
+.kepos-hindsight-title {
+  margin: -4px 0 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.kepos-hindsight-copy {
+  max-width: 60ch;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.kepos-hindsight-form {
+  display: grid;
+  gap: 10px;
+}
+
+.kepos-hindsight-label {
+  display: grid;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.kepos-hindsight-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+}
+
+.kepos-hindsight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.kepos-hindsight-button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-base);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
+}
+
+.kepos-hindsight-button:hover:not(:disabled) {
+  border-color: var(--dsw-alias-border-l1);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  color: var(--dsw-alias-label-primary);
+}
+
+.kepos-hindsight-button:disabled,
+.kepos-hindsight-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.kepos-hindsight-input:focus-visible,
+.kepos-hindsight-button:focus-visible {
+  outline: 2px solid var(--dsw-alias-interactive-border-focus);
+  outline-offset: 2px;
+}
+
+.kepos-hindsight-hint {
+  color: var(--dsw-alias-label-caption);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.kepos-hindsight-feedback {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.kepos-hindsight-feedback[data-state='success'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.kepos-hindsight-feedback[data-state='error'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kepos-hindsight-button {
+    transition: none;
+  }
+}

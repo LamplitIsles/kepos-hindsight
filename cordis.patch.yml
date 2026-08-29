@@ -1,0 +1,12 @@
+# DSH profile bundle for companion-oriented Hindsight memory.
+#
+# This deliberately replaces only the official DSH coding-agent adapter. Codex
+# continues to use @vectorize-io/hindsight-coding-agents and the shared
+# ~/.hindsight/coding-agent.json configuration.
+- id: hindsight
+  disabled: true
+
+- insert:
+    - id: kepos-hindsight
+      name: "@lamplitisles/kepos-hindsight"
+      inject: [agents, settings, tools]
