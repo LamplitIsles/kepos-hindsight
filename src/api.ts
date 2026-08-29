@@ -72,7 +72,7 @@ export class HindsightClient {
           source: "chat",
           harness: "dsh",
           session_id: sessionId,
-          turn
+          turn: String(turn)
         }
       }]
     });

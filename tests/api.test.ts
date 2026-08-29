@@ -36,7 +36,11 @@ describe("HindsightClient", () => {
       }
     });
     const retained = requests[1].body.items as Array<Record<string, unknown>>;
-    expect(retained[0]).toMatchObject({ document_id: "dsh:session-1:turn:2" });
+    expect(retained[0]).toMatchObject({
+      document_id: "dsh:session-1:turn:2",
+      // Hindsight validates every metadata value as a string.
+      metadata: { turn: "2" }
+    });
     expect(retained[0]).not.toHaveProperty("context");
     expect(retained[0]).not.toHaveProperty("strategy");
     expect(requests[1].body.operation_id).toMatch(
