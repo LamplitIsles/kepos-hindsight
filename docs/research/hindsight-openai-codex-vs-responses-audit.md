@@ -78,13 +78,15 @@ that `store: false` disables that behavior. It also describes `instructions`,
 
 ## Current deployment snapshot
 
-The current Kosmos worktree selects:
+The deployed Kosmos configuration selects:
 
 - Hindsight image
   `ghcr.io/vectorize-io/hindsight:0.9.2@sha256:84ab276b8f501546deb6ea9c64a57291718b4e16a59dd9e02a02fdd5adfe9028`;
 - provider `openai-responses`;
 - base URL `http://codex-bridge.localhost:17480/hindsight`;
 - model `gpt-5.6-luna` and reasoning effort `xhigh`;
+- 300-second per-attempt timeouts for retain and consolidation, while other LLM
+  operations keep the 120-second global default;
 - a non-secret API-key initializer `bridge-managed-oauth`; and
 - bridge image
   `ghcr.io/lamplitisles/kepos-codex-bridge:sha-255a4638ca6476a0f4fe5b79eeb54ebe0ae7280b@sha256:ab8c98c458155a0d5e08d9a611c2291b2f30eca5f0d24b27f3a58fcd8a860ba6`.
@@ -93,15 +95,8 @@ See the current local [Hindsight
 manifest](../../../../tta-lab/kosmos/tanka/lib/hindsight.libsonnet#L47-L70)
 and [bridge
 manifest](../../../../tta-lab/kosmos/tanka/lib/codex-bridge.libsonnet#L7-L53).
-The Hindsight image and configuration edits are currently worktree changes, so
-the local files—not the repository HEAD—are the source of truth for this
-snapshot.
-
-There is one documentation drift item: the local `docs/hindsight.md` still says
-the base URL is `/codex` and that the SDK reaches `/codex/responses`, while the
-manifest correctly uses `/hindsight` and therefore reaches the adapter at
-`/hindsight/responses`. This does not affect the deployed manifest but could
-cause a future manual rollback to the transparent, incompatible route.
+The owning Kosmos runbook and manifest both name `/hindsight`; the earlier
+`/codex` documentation drift was corrected before deployment.
 
 ## Request payload, field by field
 
@@ -218,7 +213,7 @@ installation](https://github.com/openai/codex/blob/6478a751fde8884b2fdc76486fe23
 | Concern | `openai-codex` | `openai-responses` + bridge |
 | --- | --- | --- |
 | Client transport | `httpx.AsyncClient.post()` to an SSE endpoint with `stream:true`, then line iteration. Because `post()` is not entered with HTTPX streaming mode, the response is normally buffered before parsing. | OpenAI SDK expects one JSON body. Bridge forces an SSE upstream request, buffers it fully, and returns one JSON body. |
-| Timeouts | Hard-coded 120-second HTTPX client and per-request timeout; OAuth refresh is 30 seconds. | Hindsight's SDK timeout is configurable, default 120 seconds. SDK retries are disabled. Bridge's Reqwest client has redirects disabled but no explicit request timeout; the downstream 120-second deadline is the practical bound visible to Hindsight. |
+| Timeouts | Hard-coded 120-second HTTPX client and per-request timeout; OAuth refresh is 30 seconds. | Hindsight's SDK timeout is configurable globally and per operation, defaulting to 120 seconds. The deployment gives retain and consolidation 300 seconds per attempt. SDK retries are disabled. Bridge's Reqwest client has redirects disabled but no explicit request timeout, so Hindsight's selected per-operation deadline is the practical bound. |
 | Ordinary retries | Configured retry budget (current default 3 retries after the first attempt) for every non-auth HTTP status and connection error, exponential backoff without jitter. One additional auth-recovery attempt for 401/403. | Same Hindsight retry budget for connection errors, malformed structured JSON, and non-auth API status errors. Backoff is exponential; status errors add ±20% jitter. 401/403 fail fast at Hindsight, but the bridge has already made one extra attempt for a 401. |
 | Tool retries | Despite accepting a retry budget, the native implementation performs no ordinary retry. It only retries once after 401/403 refresh. | Uses the configured retry loop just like ordinary calls. |
 | Request/response bounds | No provider-local body bound. | Bridge enforces 4 MiB request and successful adapted-response limits. |
@@ -231,6 +226,10 @@ policy](https://github.com/vectorize-io/hindsight/blob/ebad478240d3171bb88201ece
 · [retry
 loop](https://github.com/vectorize-io/hindsight/blob/ebad478240d3171bb88201ececda5e8d9883d22d/hindsight-api-slim/hindsight_api/engine/providers/openai_responses_llm.py#L336-L425)
 The global default is three retries and 120 seconds. [defaults](https://github.com/vectorize-io/hindsight/blob/ebad478240d3171bb88201ececda5e8d9883d22d/hindsight-api-slim/hindsight_api/config.py#L958-L963)
+Hindsight 0.9.2 exposes retain, reflect, and consolidation timeout overrides and
+threads their resolved values into the corresponding provider instances.
+[environment names](https://github.com/vectorize-io/hindsight/blob/ebad478240d3171bb88201ececda5e8d9883d22d/hindsight-api-slim/hindsight_api/config.py#L328-L375)
+· [per-operation resolution](https://github.com/vectorize-io/hindsight/blob/ebad478240d3171bb88201ececda5e8d9883d22d/hindsight-api-slim/hindsight_api/engine/memory_engine.py#L1964-L1994)
 
 The bridge transport and size limits are implemented in its [client and
 routes](https://github.com/lamplitisles/kepos-codex-bridge/blob/255a4638ca6476a0f4fe5b79eeb54ebe0ae7280b/src/lib.rs#L31-L100)
@@ -343,6 +342,25 @@ They do not prove strict JSON Schema mode, multiple parallel tool calls,
 service tiers, bank attribution, configured extra-body fields, custom headers,
 all terminal failure forms, or cache behavior.
 
+### Post-cutover timeout observation
+
+After the cutover, three already-queued `coding-agent::*` retain/consolidation
+tasks made the default timeout visible in production. Smaller consolidation
+calls completed in 9–54 seconds, while larger calls reached exactly 120 seconds,
+raised `APIConnectionError: Request timed out`, and began another Hindsight
+attempt. Both Pods remained healthy with zero restarts; observed CPU was 17m for
+Hindsight and 6m for the bridge. This isolates the failure to Hindsight's client
+deadline rather than CPU pressure, bridge transport, authentication, RRF, or a
+Rust/Python performance difference.
+
+Those obsolete Codex operations were cancelled after the coding-agent
+integration was removed. The deployment now uses the official
+`HINDSIGHT_API_RETAIN_LLM_TIMEOUT=300` and
+`HINDSIGHT_API_CONSOLIDATION_LLM_TIMEOUT=300` overrides. This is a meaningful
+advantage over the native `openai-codex` provider's hard-coded 120-second
+deadline: slow asynchronous companion-memory work can finish without raising
+the latency ceiling for other operations or paying for repeated attempts.
+
 ## Exact blocker and gap register
 
 | Severity | Item | Current status | Required action |
@@ -353,8 +371,8 @@ all terminal failure forms, or cache behavior.
 | Protocol correctness gap | Hindsight treats most terminal failed/incomplete JSON responses as ordinary results. | Present in `openai-responses`; native Codex ignores terminal state too. | Upstream Hindsight fix is preferable; not a bridge-specific blocker. |
 | Compatibility risk | No synthesized Codex `originator`, Codex UA/Origin, encrypted-reasoning include, client metadata, or stable cache key. | Luna accepts current traffic live. | Pin bridge/Hindsight images and rerun the small live acceptance matrix on upgrades or model changes. |
 | Response bound | Successful SSE aggregation is capped at 4 MiB. | Deliberate; larger successful responses become generic 502. | Accept for companion workloads; revisit only with evidence of legitimate larger outputs. |
+| Operational timeout | Large `xhigh` retain/consolidation calls can exceed the 120-second default and trigger expensive retries. | Resolved in the deployment with official 300-second per-operation overrides; ordinary operations remain at 120 seconds. | Keep the overrides explicit and inspect timeout/retry logs before increasing retry budgets. |
 | Untested optional surface | Strict JSON Schema, parallel multi-tool calls, service tier, `user`, extra body, custom headers. | Not enabled in current Kosmos config. | Test before enabling; do not add speculative compatibility code. |
-| Documentation drift | Kosmos runbook text names `/codex`; manifest uses `/hindsight`. | No runtime effect, but misleading. | Correct in the owning Kosmos change before merge. |
 
 ## Recommendation
 
@@ -371,3 +389,8 @@ acceptance condition is: Hindsight 0.9.2 continues to send `store:false`, the
 bridge continues to force SSE and reconstruct terminal output, and the small
 text/structured/tool/follow-up probe remains green after either image or model
 changes.
+
+Keep the 300-second override scoped to asynchronous retain and consolidation.
+Increasing the global timeout would make interactive failures slower without
+solving a demonstrated need, while leaving the default at 120 seconds causes
+large `xhigh` memory calls to repeat and consume quota.
