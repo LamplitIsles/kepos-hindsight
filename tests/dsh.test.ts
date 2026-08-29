@@ -77,6 +77,34 @@ describe("DSH hooks", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("waits only for the asynchronous retain acknowledgement before closing a turn", async () => {
+    const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
+    let acknowledge: (() => void) | undefined;
+    const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise<Response>((resolve) => {
+      acknowledge = () => resolve(new Response(JSON.stringify({ operation_id: "queued" })));
+    }));
+    globalThis.fetch = fetch;
+    const hooks = createDshHooks({ configPath });
+    const agent = {
+      session: {
+        header: { id: "session-acknowledgement" },
+        events: [
+          { type: "turn/start", data: { turn: 1 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "请记住这件事" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我会记住。" }] } } }
+        ]
+      }
+    };
+
+    let settled = false;
+    const stopping = hooks.turnStopping({ agent, turn: 1 }).then(() => { settled = true; });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(settled).toBe(false);
+    acknowledge?.();
+    await expect(stopping).resolves.toBeUndefined();
+    expect(settled).toBe(true);
+  });
+
   it("releases turn de-duplication state when a session is disposed", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({ operation_id: "queued" })));

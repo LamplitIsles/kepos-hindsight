@@ -133,7 +133,7 @@ export function createDshHooks(
       }
     },
 
-    turnStopping(payload: { agent: AgentLike; turn: number }): void {
+    async turnStopping(payload: { agent: AgentLike; turn: number }): Promise<void> {
       if (!isCompanionSession(payload.agent)) return;
       const config = runtime();
       if (!config.enabled || !config.retainSessions) return;
@@ -143,9 +143,16 @@ export function createDshHooks(
       if (turns.has(payload.turn)) return;
       turns.add(payload.turn);
       const transcript = transcriptForTurn(payload.agent.session.events as never[] | undefined, payload.turn);
-      void clientFor(config).retain(sessionId, payload.turn, transcript).catch(() => {
+      try {
+        // The Hindsight operation remains asynchronous. Await only the small
+        // HTTP acknowledgement so DSH does not finish this turn before the
+        // retain request has reached the server.
+        await clientFor(config).retain(sessionId, payload.turn, transcript);
+      } catch (error) {
         retainedTurns.get(sessionId)?.delete(payload.turn);
-      });
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(`[kepos-hindsight] retain submission failed for session ${sessionId}, turn ${payload.turn}: ${detail}`);
+      }
     },
 
     disposed(payload: { agent: AgentLike }): void {
