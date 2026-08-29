@@ -18,6 +18,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
 });
 
 describe("DSH hooks", () => {
@@ -107,6 +108,39 @@ describe("DSH hooks", () => {
     expect(decision.messages).toHaveLength(1);
   });
 
+  it("injects a memory returned on consecutive eligible direct turns", async () => {
+    const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => hindsightJson({
+      results: [{ id: "memory-1", text: "Neil likes concise Chinese.", type: "observation" }]
+    }));
+    globalThis.fetch = fetch;
+    const hooks = createDshHooks({ configPath });
+    const agent = {
+      session: {
+        header: { id: "consecutive-recall-session" },
+        events: [
+          { type: "turn/start", data: { turn: 1 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "请记住我的回复偏好" }] } },
+          { type: "turn/start", data: { turn: 2 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "还是按那个偏好回复" }] } }
+        ]
+      }
+    };
+
+    const first = await hooks.preStep({ agent, turn: 1, signal: new AbortController().signal }, async () => ({
+      kind: "enter",
+      messages: [{ source: { kind: "user" }, content: [{ type: "text", text: "请记住我的回复偏好" }] }]
+    }));
+    const second = await hooks.preStep({ agent, turn: 2, signal: new AbortController().signal }, async () => ({
+      kind: "enter",
+      messages: [{ source: { kind: "user" }, content: [{ type: "text", text: "还是按那个偏好回复" }] }]
+    }));
+
+    expect(JSON.stringify(first.messages?.[1])).toContain("Neil likes concise Chinese.");
+    expect(JSON.stringify(second.messages?.[1])).toContain("Neil likes concise Chinese.");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("waits only for the asynchronous retain acknowledgement before closing a turn", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
     let acknowledge: (() => void) | undefined;
@@ -171,6 +205,53 @@ describe("DSH hooks", () => {
     await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
   });
 
+  it("repairs the complete session after an append acknowledgement fails", async () => {
+    const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      requests.push(await hindsightRequest(input, init));
+      return requests.length === 2
+        ? new Response("retain unavailable", { status: 503 })
+        : hindsightJson({ operation_id: "queued" });
+    });
+    globalThis.fetch = fetch;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const hooks = createDshHooks({ configPath });
+    const agent = {
+      session: {
+        header: { id: "retain-recovery-session" },
+        events: [
+          { type: "turn/start", data: { turn: 1 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第一句" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第一句回复" }] } } },
+          { type: "turn/start", data: { turn: 2 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "失败但必须保留的第二句" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第二句回复" }] } } },
+          { type: "turn/start", data: { turn: 3 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "触发修复的第三句" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第三句回复" }] } } },
+          { type: "turn/start", data: { turn: 4 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "修复后的第四句" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第四句回复" }] } } }
+        ]
+      }
+    };
+
+    await hooks.turnStopping({ agent, turn: 1 });
+    await hooks.turnStopping({ agent, turn: 2 });
+    await hooks.turnStopping({ agent, turn: 3 });
+    await hooks.turnStopping({ agent, turn: 4 });
+
+    const retained = requests.map((request) => (request.body.items as Array<Record<string, unknown>>)[0]);
+    expect(retained.map((item) => item?.update_mode)).toEqual(["replace", "append", "replace", "append"]);
+    expect(retained[2]?.content).toContain("第一句");
+    expect(retained[2]?.content).toContain("失败但必须保留的第二句");
+    expect(retained[2]?.content).toContain("触发修复的第三句");
+    expect(retained[3]?.content).toContain("修复后的第四句");
+    expect(retained[3]?.content).not.toContain("失败但必须保留的第二句");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("retain submission failed"));
+  });
+
   it("replaces the full session when its selected bank changes", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test" });
     let bankId = "first-bank";
@@ -228,21 +309,56 @@ describe("DSH hooks", () => {
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   });
 
-  it("makes hindsight_recall available when DSH invokes a tool without an agent execution field", async () => {
-    const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => hindsightJson({
-      results: [{ text: "Neil likes concise Chinese.", type: "observation" }]
-    }));
+  it("declares tool deadlines, leaves timeout handling to DSH, and cancels pending memory work", async () => {
+    const configPath = await configFile({
+      apiUrl: "http://memory.test",
+      bankId: "yuki",
+      harnesses: { dsh: { companion: { recall: { timeoutMs: 6_789 } } } }
+    });
+    const requests: Request[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push(request);
+      return new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(request.signal.reason), { once: true });
+      });
+    });
     globalThis.fetch = fetch;
-    const tools: Array<{ name: string; execute: (args: { query: string }) => Promise<string> }> = [];
+    const tools: Array<{
+      name: string;
+      timeoutMs?: number;
+      execute: (args: { query: string }, execution: { signal: AbortSignal }) => Promise<string>;
+    }> = [];
+    const on = vi.fn();
 
     apply({
       settings: { register: () => ({ get: () => ({ bankId: "yuki" }) }) },
-      on: () => undefined,
+      on,
       inject: (_services, callback) => callback({ tools: { register: (tool: unknown) => tools.push(tool as typeof tools[number]) } })
     }, { configPath });
 
     const recall = tools.find((tool) => tool.name === "hindsight_recall");
-    await expect(recall?.execute({ query: "reply preference" })).resolves.toContain("Neil likes concise Chinese.");
+    const reflect = tools.find((tool) => tool.name === "hindsight_reflect");
+    expect(recall?.timeoutMs).toBe(6_789);
+    expect(reflect?.timeoutMs).toBe(330_000);
+    expect(on.mock.calls.map(([event]) => event)).toEqual([
+      "agent/pre-step",
+      "agent/turn-stopping",
+      "agent/disposed"
+    ]);
+
+    const recallController = new AbortController();
+    const recalling = recall?.execute({ query: "reply preference" }, { signal: recallController.signal });
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
+    recallController.abort(new Error("user cancelled recall"));
+    await expect(recalling).rejects.toBeDefined();
+    expect(requests[0]?.signal.aborted).toBe(true);
+
+    const reflectController = new AbortController();
+    const reflecting = reflect?.execute({ query: "summarize patterns" }, { signal: reflectController.signal });
+    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    reflectController.abort(new Error("user cancelled reflect"));
+    await expect(reflecting).rejects.toBeDefined();
+    expect(requests[1]?.signal.aborted).toBe(true);
   });
 });

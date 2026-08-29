@@ -50,7 +50,7 @@ export class HindsightClient {
     // when Hindsight implements append as literal text concatenation.
     const content = `${turns.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
     const documentId = `dsh:${sessionId}`;
-    const operationId = deterministicOperationId(`${this.bankId}\n${documentId}\n${updateMode}\n${content}`);
+    const operationId = deterministicOperationId(`${this.bankId}\n${documentId}\n${turn}\n${updateMode}\n${content}`);
     await this.client.retain(this.bankId, content, {
       async: true,
       operationId,

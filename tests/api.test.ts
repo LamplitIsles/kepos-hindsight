@@ -61,5 +61,14 @@ describe("HindsightClient", () => {
     expect(requests[1].body.operation_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
     );
+
+    const identicalTurn = [{ role: "user" as const, content: "这句内容在不同回合相同" }];
+    await client.retain("session-identities", 7, identicalTurn, "append");
+    await client.retain("session-identities", 7, identicalTurn, "append");
+    await client.retain("session-identities", 8, identicalTurn, "append");
+    const operationIds = requests.slice(3).map((request) => request.body.operation_id as string);
+
+    expect(operationIds[0]).toBe(operationIds[1]);
+    expect(operationIds[2]).not.toBe(operationIds[0]);
   });
 });

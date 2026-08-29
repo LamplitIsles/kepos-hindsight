@@ -13,7 +13,7 @@ import {
 } from "./settings.js";
 import { recentUserText, textOf, transcriptForTurn, transcriptThroughTurn } from "./transcript.js";
 import type { CompanionSettings } from "./settings.js";
-import type { DshPluginConfig, RecalledMemory, ResolvedCompanionConfig } from "./types.js";
+import type { DshPluginConfig, ResolvedCompanionConfig } from "./types.js";
 
 export const name = "kepos-hindsight";
 export const inject = ["agents", "settings", "tools"] as const;
@@ -34,6 +34,7 @@ type AgentLike = {
 
 type PreStepDecision = { kind: string; messages?: unknown[] };
 type ToolContext = { tools: { register: (tool: unknown) => void } };
+type ToolExecution = { signal: AbortSignal };
 type RuntimeResolver = () => ResolvedCompanionConfig;
 type HostContext = {
   settings: {
@@ -43,10 +44,10 @@ type HostContext = {
   inject: (services: string[], callback: (context: ToolContext) => void) => void;
 };
 
-const seenMemories = new Map<string, Map<string, number>>();
 const retainedTurns = new Map<string, Set<number>>();
 const retainedSessionTargets = new Map<string, string>();
 const retainSubmissionQueues = new Map<string, Promise<void>>();
+const REFLECT_TOOL_TIMEOUT_MS = 330_000;
 
 function clientFor(config: ResolvedCompanionConfig): HindsightClient {
   return new HindsightClient(config.apiUrl, config.bankId, config.apiToken);
@@ -96,19 +97,6 @@ function isDirectUserMessage(message: unknown): boolean {
     && (message as { source: { kind?: unknown } }).source.kind === "user";
 }
 
-function unseenMemories(sessionId: string, turn: number, memories: RecalledMemory[]): RecalledMemory[] {
-  const seen = seenMemories.get(sessionId) ?? new Map<string, number>();
-  seenMemories.set(sessionId, seen);
-  const fresh = memories.filter((memory) => {
-    const key = memory.id ?? memory.text;
-    const lastTurn = seen.get(key);
-    seen.set(key, turn);
-    return lastTurn === undefined || turn - lastTurn >= 3;
-  });
-  for (const [key, lastTurn] of seen) if (turn - lastTurn > 12) seen.delete(key);
-  return fresh;
-}
-
 function injection(text: string): unknown {
   return {
     id: randomUUID(),
@@ -146,7 +134,7 @@ export function createDshHooks(
         const previous = prior.slice(-Math.max(0, config.recall.contextTurns - 1));
         const query = composeRecallQuery(previous, prompt, config.recall.maxQueryChars);
         const memories = await clientFor(config).recall(query, config.recall, timeoutSignal(payload.signal, config.recall.timeoutMs));
-        const context = renderMemoryContext(unseenMemories(payload.agent.session.header.id, payload.turn, memories));
+        const context = renderMemoryContext(memories);
         return { ...decision, messages: [...(decision.messages ?? []), injection(context)] };
       } catch {
         // Retrieval is supplementary; a slow or unavailable memory service never blocks conversation.
@@ -177,6 +165,7 @@ export function createDshHooks(
           retainedSessionTargets.set(sessionId, target);
         } catch (error) {
           retainedTurns.get(sessionId)?.delete(payload.turn);
+          retainedSessionTargets.delete(sessionId);
           const detail = error instanceof Error ? error.message : String(error);
           console.warn(`[kepos-hindsight] retain submission failed for session ${sessionId}, turn ${payload.turn}: ${detail}`);
         }
@@ -185,7 +174,6 @@ export function createDshHooks(
 
     disposed(payload: { agent: AgentLike }): void {
       const sessionId = payload.agent.session.header.id;
-      seenMemories.delete(sessionId);
       retainedTurns.delete(sessionId);
       retainedSessionTargets.delete(sessionId);
     }
@@ -207,15 +195,17 @@ function textOutput(value: string): Array<{ type: "text"; text: string }> {
 }
 
 function registerTools(toolContext: ToolContext, runtime: RuntimeResolver): void {
+  const recallTimeoutMs = runtime().recall.timeoutMs;
   toolContext.tools.register({
     name: "hindsight_recall",
     description: "Look up raw historical memories relevant to a question. Use it for a specific past fact or preference; it does not call an LLM or change the bank.",
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
-    async execute(args: { query: string }) {
+    timeoutMs: recallTimeoutMs,
+    async execute(args: { query: string }, execution: ToolExecution) {
       const config = runtime();
       if (!config.enabled) return "Hindsight companion memory is disabled.";
-      const memories = await clientFor(config).recall(args.query, config.recall, timeoutSignal(undefined, config.recall.timeoutMs));
+      const memories = await clientFor(config).recall(args.query, config.recall, execution.signal);
       return memories.length
         ? memories.map((memory) => `- ${memory.type ? `[${memory.type}] ` : ""}${memory.text}`).join("\n")
         : "No relevant memory was found.";
@@ -227,10 +217,11 @@ function registerTools(toolContext: ToolContext, runtime: RuntimeResolver): void
     description: "Deliberately synthesize a question across long-term memory. Slower than hindsight_recall; use only for patterns, retrospectives, or a question raw facts cannot answer.",
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
-    async execute(args: { query: string }) {
+    timeoutMs: REFLECT_TOOL_TIMEOUT_MS,
+    async execute(args: { query: string }, execution: ToolExecution) {
       const config = runtime();
       if (!config.enabled) return "Hindsight companion memory is disabled.";
-      return (await clientFor(config).reflect(args.query, timeoutSignal(undefined, 30_000))) || "No memory synthesis was returned.";
+      return (await clientFor(config).reflect(args.query, execution.signal)) || "No memory synthesis was returned.";
     }
   });
 }
