@@ -84,9 +84,9 @@ The deployed Kosmos configuration selects:
   `ghcr.io/vectorize-io/hindsight:0.9.2@sha256:84ab276b8f501546deb6ea9c64a57291718b4e16a59dd9e02a02fdd5adfe9028`;
 - provider `openai-responses`;
 - base URL `http://codex-bridge.localhost:17480/hindsight`;
-- model `gpt-5.6-luna` and reasoning effort `xhigh`;
-- 300-second per-attempt timeouts for retain and consolidation, while other LLM
-  operations keep the 120-second global default;
+- model `gpt-5.6-luna` and reasoning effort `high`;
+- a 300-second global per-attempt LLM timeout, inherited by retain, reflect,
+  and consolidation;
 - a non-secret API-key initializer `bridge-managed-oauth`; and
 - bridge image
   `ghcr.io/lamplitisles/kepos-codex-bridge:sha-255a4638ca6476a0f4fe5b79eeb54ebe0ae7280b@sha256:ab8c98c458155a0d5e08d9a611c2291b2f30eca5f0d24b27f3a58fcd8a860ba6`.
@@ -111,7 +111,7 @@ effective Codex-upstream request where that differs.
 | `store` | Always `false`. | Always `false` in ordinary and tool calls; bridge preserves it. | Required by the ChatGPT backend. This answers the deployment's main uncertainty. |
 | `stream` | Always `true`. | Omitted by Hindsight, so SDK requests a single JSON Response. The adapter overwrites any incoming value with `true` upstream and buffers back to JSON downstream. | Necessary transport adaptation; downstream latency remains non-streaming. |
 | `include` | Always `['reasoning.encrypted_content']`. | Omitted. | No encrypted reasoning is requested or replayed. Both Hindsight providers are stateless and their parsers discard reasoning items, so this is mainly a quality/forward-compatibility difference today. |
-| `reasoning` | Always sends a `summary` (`auto`, `concise`, or `detailed`); sends configured `effort` unchanged. `gpt-5.2-*` forces `summary=detailed`. | Sends only `{'effort': configured}` and only when the model name contains `gpt-5`, `o1`, or `o3`. Current Luna matches. | Current `xhigh` reaches upstream; presentation/summary policy differs. |
+| `reasoning` | Always sends a `summary` (`auto`, `concise`, or `detailed`); sends configured `effort` unchanged. `gpt-5.2-*` forces `summary=detailed`. | Sends only `{'effort': configured}` and only when the model name contains `gpt-5`, `o1`, or `o3`. Current Luna matches. | Current `high` reaches upstream; presentation/summary policy differs. |
 | Maximum tokens | Accepts `max_completion_tokens` but never serializes it on either path. | Ordinary reasoning calls raise any configured value below 16,000 to 16,000; tool calls send the value unchanged as `max_output_tokens`. The adapter removes the field in both cases. | Effective upstream behavior is uncapped for both providers. `openai-responses` can no longer receive `status=incomplete/reason=max_output_tokens`, so its `OutputTooLongError` branch cannot fire because of the requested limit. |
 | Temperature | Accepted but never sent. | Sent only for non-reasoning models; omitted for current Luna. | No current difference. |
 | Ordinary tools | Sends `tools=[]`, `tool_choice='auto'`, and `parallel_tool_calls=true`, except the strict-schema forced-tool case. | Omits all three when making an ordinary text/structured call. | Backend defaults apply to the new path. |
@@ -354,12 +354,14 @@ deadline rather than CPU pressure, bridge transport, authentication, RRF, or a
 Rust/Python performance difference.
 
 Those obsolete Codex operations were cancelled after the coding-agent
-integration was removed. The deployment now uses the official
-`HINDSIGHT_API_RETAIN_LLM_TIMEOUT=300` and
-`HINDSIGHT_API_CONSOLIDATION_LLM_TIMEOUT=300` overrides. This is a meaningful
-advantage over the native `openai-codex` provider's hard-coded 120-second
-deadline: slow asynchronous companion-memory work can finish without raising
-the latency ceiling for other operations or paying for repeated attempts.
+integration was removed. The deployment first used the official retain and
+consolidation timeout overrides, then standardized on
+`HINDSIGHT_API_LLM_TIMEOUT=300` so every LLM operation inherits the same
+deadline. It also reduced Luna reasoning effort from `xhigh` to `high`; the
+earlier live probes above remain an exact record of the pre-tuning
+configuration. The configurable deadline is a meaningful advantage over the
+native `openai-codex` provider's hard-coded 120-second deadline: slow
+companion-memory work can finish without paying for repeated attempts.
 
 ## Exact blocker and gap register
 
@@ -371,7 +373,7 @@ the latency ceiling for other operations or paying for repeated attempts.
 | Protocol correctness gap | Hindsight treats most terminal failed/incomplete JSON responses as ordinary results. | Present in `openai-responses`; native Codex ignores terminal state too. | Upstream Hindsight fix is preferable; not a bridge-specific blocker. |
 | Compatibility risk | No synthesized Codex `originator`, Codex UA/Origin, encrypted-reasoning include, client metadata, or stable cache key. | Luna accepts current traffic live. | Pin bridge/Hindsight images and rerun the small live acceptance matrix on upgrades or model changes. |
 | Response bound | Successful SSE aggregation is capped at 4 MiB. | Deliberate; larger successful responses become generic 502. | Accept for companion workloads; revisit only with evidence of legitimate larger outputs. |
-| Operational timeout | Large `xhigh` retain/consolidation calls can exceed the 120-second default and trigger expensive retries. | Resolved in the deployment with official 300-second per-operation overrides; ordinary operations remain at 120 seconds. | Keep the overrides explicit and inspect timeout/retry logs before increasing retry budgets. |
+| Operational timeout | Large memory calls can exceed the 120-second default and trigger expensive retries. | Resolved with a 300-second global LLM timeout and by reducing Luna effort from `xhigh` to `high`. | Inspect timeout/retry logs before increasing retry budgets or reasoning effort. |
 | Untested optional surface | Strict JSON Schema, parallel multi-tool calls, service tier, `user`, extra body, custom headers. | Not enabled in current Kosmos config. | Test before enabling; do not add speculative compatibility code. |
 
 ## Recommendation
@@ -390,7 +392,8 @@ bridge continues to force SSE and reconstruct terminal output, and the small
 text/structured/tool/follow-up probe remains green after either image or model
 changes.
 
-Keep the 300-second override scoped to asynchronous retain and consolidation.
-Increasing the global timeout would make interactive failures slower without
-solving a demonstrated need, while leaving the default at 120 seconds causes
-large `xhigh` memory calls to repeat and consume quota.
+Keep the explicit 300-second global timeout selected for this deployment.
+Recall remains pure retrieval and is unaffected; LLM-backed reflect can now
+wait longer before failing. Keep Luna at `high` unless representative memory
+quality evaluations demonstrate that `xhigh` justifies its additional latency
+and token cost.
