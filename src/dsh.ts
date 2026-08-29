@@ -1,21 +1,32 @@
 import { randomUUID } from "node:crypto";
 
+import { settingsNamespace } from "@deepseek-ai/dsh-settings";
+import z from "@deepseek-ai/schemastery";
+
 import { HindsightClient } from "./api.js";
 import { resolveCompanionConfig } from "./config.js";
 import { composeRecallQuery, renderMemoryContext } from "./context.js";
+import {
+  DEFAULT_COMPANION_SETTINGS,
+  normalizeCompanionSettings,
+  SETTINGS_NAMESPACE
+} from "./settings.js";
 import { recentUserText, textOf, transcriptForTurn } from "./transcript.js";
+import type { CompanionSettings } from "./settings.js";
 import type { DshPluginConfig, RecalledMemory, ResolvedCompanionConfig } from "./types.js";
 
 export const name = "kepos-hindsight";
-export const inject = ["agents"];
+export const inject = ["agents", "settings", "tools"] as const;
+
+export const CompanionSettingsSchema = z.object({
+  bankId: z.string().min(1).default(DEFAULT_COMPANION_SETTINGS.bankId)
+});
 
 type AgentLike = {
   session: {
     header: {
       id: string;
-      cwd?: string;
       origin?: string;
-      agentPreset?: string;
     };
     events?: unknown[];
   };
@@ -23,25 +34,24 @@ type AgentLike = {
 
 type PreStepDecision = { kind: string; messages?: unknown[] };
 type ToolContext = { tools: { register: (tool: unknown) => void } };
+type RuntimeResolver = () => ResolvedCompanionConfig;
+type HostContext = {
+  settings: {
+    register: (namespace: unknown, schema: unknown, options: unknown) => { get: () => unknown };
+  };
+  on: (event: string, listener: unknown, options?: unknown) => void;
+  inject: (services: string[], callback: (context: ToolContext) => void) => void;
+};
 
 const seenMemories = new Map<string, Map<string, number>>();
 const retainedTurns = new Map<string, Set<number>>();
-
-function runtimeFor(agent: AgentLike, pluginConfig: DshPluginConfig): ResolvedCompanionConfig | undefined {
-  if (agent.session.header.origin === "subagent") return undefined;
-  const config = resolveCompanionConfig(pluginConfig, agent.session.header.cwd ?? process.cwd());
-  const preset = agent.session.header.agentPreset;
-  if (!config.enabled || !preset || !config.activePresets.includes(preset)) return undefined;
-  return config;
-}
 
 function clientFor(config: ResolvedCompanionConfig): HindsightClient {
   return new HindsightClient(config.apiUrl, config.bankId, config.apiToken);
 }
 
-function fallbackRuntime(pluginConfig: DshPluginConfig): ResolvedCompanionConfig | undefined {
-  const config = resolveCompanionConfig(pluginConfig);
-  return config.enabled ? config : undefined;
+function isCompanionSession(agent: AgentLike): boolean {
+  return agent.session.header.origin !== "subagent";
 }
 
 function timeoutSignal(parent: AbortSignal | undefined, timeoutMs: number): AbortSignal {
@@ -87,13 +97,24 @@ function injection(text: string): unknown {
   };
 }
 
-export function createDshHooks(pluginConfig: DshPluginConfig = {}) {
+/**
+ * Every path resolves exactly one explicit companion configuration. The agent
+ * event provides only session/turn/transcript data, never bank selection.
+ */
+export function createDshHooks(
+  pluginConfig: DshPluginConfig = {},
+  getSettings: () => CompanionSettings = () => DEFAULT_COMPANION_SETTINGS
+) {
+  const runtime: RuntimeResolver = () => resolveCompanionConfig(
+    pluginConfig,
+    normalizeCompanionSettings(getSettings())
+  );
   return {
     async preStep(payload: { agent: AgentLike; turn: number; signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision> {
       const decision = await next();
-      if (decision.kind !== "enter" || payload.signal.aborted) return decision;
-      const config = runtimeFor(payload.agent, pluginConfig);
-      if (!config) return decision;
+      if (decision.kind !== "enter" || payload.signal.aborted || !isCompanionSession(payload.agent)) return decision;
+      const config = runtime();
+      if (!config.enabled) return decision;
       const prompt = directUserPrompt(decision.messages);
       if (!prompt) return decision;
       try {
@@ -113,8 +134,9 @@ export function createDshHooks(pluginConfig: DshPluginConfig = {}) {
     },
 
     turnStopping(payload: { agent: AgentLike; turn: number }): void {
-      const config = runtimeFor(payload.agent, pluginConfig);
-      if (!config || !config.retainSessions) return;
+      if (!isCompanionSession(payload.agent)) return;
+      const config = runtime();
+      if (!config.enabled || !config.retainSessions) return;
       const sessionId = payload.agent.session.header.id;
       const turns = retainedTurns.get(sessionId) ?? new Set<number>();
       retainedTurns.set(sessionId, turns);
@@ -134,13 +156,13 @@ export function createDshHooks(pluginConfig: DshPluginConfig = {}) {
   };
 }
 
-function toolParameters(required = true): unknown {
+function toolParameters(): unknown {
   return {
     type: "object",
     properties: {
       query: { type: "string", description: "The memory question or topic to look up" }
     },
-    ...(required ? { required: ["query"] } : {})
+    required: ["query"]
   };
 }
 
@@ -148,17 +170,15 @@ function textOutput(value: string): Array<{ type: "text"; text: string }> {
   return [{ type: "text", text: value }];
 }
 
-function registerTools(toolContext: ToolContext, pluginConfig: DshPluginConfig): void {
-  const fallback = fallbackRuntime(pluginConfig);
-  if (!fallback) return;
+function registerTools(toolContext: ToolContext, runtime: RuntimeResolver): void {
   toolContext.tools.register({
     name: "hindsight_recall",
     description: "Look up raw historical memories relevant to a question. Use it for a specific past fact or preference; it does not call an LLM or change the bank.",
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
-    async execute(args: { query: string }, execution: { agent?: AgentLike }) {
-      const config = execution.agent ? runtimeFor(execution.agent, pluginConfig) : fallback;
-      if (!config) return "Hindsight companion memory is unavailable in this session.";
+    async execute(args: { query: string }) {
+      const config = runtime();
+      if (!config.enabled) return "Hindsight companion memory is disabled.";
       const memories = await clientFor(config).recall(args.query, config.recall, timeoutSignal(undefined, config.recall.timeoutMs));
       return memories.length
         ? memories.map((memory) => `- ${memory.type ? `[${memory.type}] ` : ""}${memory.text}`).join("\n")
@@ -171,20 +191,27 @@ function registerTools(toolContext: ToolContext, pluginConfig: DshPluginConfig):
     description: "Deliberately synthesize a question across long-term memory. Slower than hindsight_recall; use only for patterns, retrospectives, or a question raw facts cannot answer.",
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
-    async execute(args: { query: string }, execution: { agent?: AgentLike }) {
-      const config = execution.agent ? runtimeFor(execution.agent, pluginConfig) : fallback;
-      if (!config) return "Hindsight companion memory is unavailable in this session.";
+    async execute(args: { query: string }) {
+      const config = runtime();
+      if (!config.enabled) return "Hindsight companion memory is disabled.";
       return (await clientFor(config).reflect(args.query, timeoutSignal(undefined, 30_000))) || "No memory synthesis was returned.";
     }
   });
 }
 
-export function apply(ctx: { on: (event: string, listener: unknown, options?: unknown) => void; inject: (services: string[], callback: (context: ToolContext) => void) => void }, pluginConfig: DshPluginConfig = {}): void {
-  const hooks = createDshHooks(pluginConfig);
+export function apply(ctx: HostContext, pluginConfig: DshPluginConfig = {}): void {
+  const settings = ctx.settings.register(
+    settingsNamespace(SETTINGS_NAMESPACE),
+    CompanionSettingsSchema,
+    { base: DEFAULT_COMPANION_SETTINGS, applies: "live" }
+  );
+  const getSettings = () => normalizeCompanionSettings(settings.get());
+  const hooks = createDshHooks(pluginConfig, getSettings);
+  const runtime: RuntimeResolver = () => resolveCompanionConfig(pluginConfig, getSettings());
   ctx.on("agent/pre-step", hooks.preStep, { prepend: true });
   ctx.on("agent/turn-stopping", hooks.turnStopping);
   ctx.on("agent/disposed", hooks.disposed);
-  ctx.inject(["tools"], (toolContext) => registerTools(toolContext, pluginConfig));
+  ctx.inject(["tools"], (toolContext) => registerTools(toolContext, runtime));
 }
 
 export default { name, inject, apply };

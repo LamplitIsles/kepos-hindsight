@@ -57,13 +57,21 @@ bundle list.
 
 ## Configuration
 
-Endpoint, credentials, bank selection, and the global `disabled` flag stay in
-the normal shared Hindsight config, `~/.hindsight/coding-agent.json`. The
-adapter respects `bankId` and `mapPathToBank`; if neither selects a bank, it
-uses `coding-agent::workspace`.
+Endpoint, credentials, per-bank missions, and the global `disabled` flag stay
+in the normal shared Hindsight config, `~/.hindsight/coding-agent.json`.
 
-It runs only for the `yuki` DSH preset by default. The optional
-`harnesses.dsh.companion` extension configures adapter behavior; the official
+Choose the DSH companion bank at **Settings → Plugins → Hindsight memory**.
+It defaults to `coding-agent::workspace`. This is the only routing choice: a
+DSH agent, its preset, its workspace, and the current working directory never
+select or remap the bank. The chosen bank is used by automatic recall,
+asynchronous retain, `hindsight_recall`, and `hindsight_reflect` alike.
+
+Saving is a live DSH setting and applies on the next turn. DSH intentionally
+allows Settings RPC writes only from its loopback Web UI, so change it on the
+host rather than through a Kepos-proxied mobile connection.
+
+The optional `harnesses.dsh.companion.recall` extension tunes retrieval only;
+it does not choose a bank or add a recall/retain switch. The official
 coding-agent adapter ignores this extension.
 
 ```json
@@ -71,7 +79,6 @@ coding-agent adapter ignores this extension.
   "harnesses": {
     "dsh": {
       "companion": {
-        "activePresets": ["yuki"],
         "recall": {
           "budget": "low",
           "maxTokens": 900,
@@ -90,7 +97,9 @@ coding-agent adapter ignores this extension.
 
 This example is optional: the values shown are the defaults. `low` recall is
 retrieval rather than a Reflect LLM request. Raise its budget only after
-checking that a real conversation needs broader retrieval.
+checking that a real conversation needs broader retrieval. Automatic recall
+and retain deliberately have no UI controls; the global Hindsight `disabled`
+and `retainSessions` settings remain their shared service-level safeguards.
 
 ## Yuki lives in DSH live config
 

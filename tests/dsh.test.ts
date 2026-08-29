@@ -61,12 +61,12 @@ describe("DSH hooks", () => {
     expect(retained.items[0].content).not.toContain("do not retain me");
   });
 
-  it("does not run for a non-Yuki preset", async () => {
+  it("does not run for a subagent session", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
     const fetch = vi.fn<typeof globalThis.fetch>();
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
-    const agent = { session: { header: { id: "session-2", agentPreset: "code" }, events: [] } };
+    const agent = { session: { header: { id: "session-2", origin: "subagent" }, events: [] } };
 
     const decision = await hooks.preStep({ agent, turn: 1, signal: new AbortController().signal }, async () => ({
       kind: "enter",
@@ -105,14 +105,15 @@ describe("DSH hooks", () => {
       results: [{ text: "Neil likes concise Chinese.", type: "observation" }]
     })));
     globalThis.fetch = fetch;
-    const tools: Array<{ name: string; execute: (args: { query: string }, execution: object) => Promise<string> }> = [];
+    const tools: Array<{ name: string; execute: (args: { query: string }) => Promise<string> }> = [];
 
     apply({
+      settings: { register: () => ({ get: () => ({ bankId: "yuki" }) }) },
       on: () => undefined,
-      inject: (_services, callback) => callback({ tools: { register: (tool) => tools.push(tool as typeof tools[number]) } })
+      inject: (_services, callback) => callback({ tools: { register: (tool: unknown) => tools.push(tool as typeof tools[number]) } })
     }, { configPath });
 
     const recall = tools.find((tool) => tool.name === "hindsight_recall");
-    await expect(recall?.execute({ query: "reply preference" }, {})).resolves.toContain("Neil likes concise Chinese.");
+    await expect(recall?.execute({ query: "reply preference" })).resolves.toContain("Neil likes concise Chinese.");
   });
 });

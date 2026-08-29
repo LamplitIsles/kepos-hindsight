@@ -8,4 +8,5 @@
 
 - insert:
     - id: kepos-hindsight
-      name: "@lamplitisles/kepos-hindsight/dsh"
+      name: "@lamplitisles/kepos-hindsight"
+      inject: [agents, settings, tools]

@@ -14,7 +14,7 @@ async function configFile(config: unknown): Promise<string> {
 }
 
 describe("resolveCompanionConfig", () => {
-  it("uses the most-specific workspace map and leaves missions untouched", async () => {
+  it("uses the explicit companion bank and leaves missions untouched", async () => {
     const path = await configFile({
       apiUrl: "http://memory.test/",
       mapPathToBank: {
@@ -23,10 +23,7 @@ describe("resolveCompanionConfig", () => {
       },
       harnesses: {
         dsh: {
-          companion: {
-            activePresets: ["yuki", "mika"],
-            recall: { contextTurns: 3, topK: 4 }
-          }
+          companion: { recall: { contextTurns: 3, topK: 4 } }
         }
       },
       banks: {
@@ -37,13 +34,12 @@ describe("resolveCompanionConfig", () => {
       }
     });
 
-    const config = resolveCompanionConfig({ configPath: path }, "/work/yuki/chat");
+    const config = resolveCompanionConfig({ configPath: path }, { bankId: "yuki-bank" });
 
     expect(config).toMatchObject({
       enabled: true,
       apiUrl: "http://memory.test",
-      bankId: "yuki-bank",
-      activePresets: ["yuki", "mika"]
+      bankId: "yuki-bank"
     });
     expect(config.recall).toMatchObject({ contextTurns: 3, topK: 4, budget: "low" });
   });
@@ -56,6 +52,6 @@ describe("resolveCompanionConfig", () => {
     });
 
     expect(resolveCompanionConfig({ configPath: sharedDisabled }).enabled).toBe(false);
-    expect(resolveCompanionConfig({ configPath: bankDisabled }).enabled).toBe(false);
+    expect(resolveCompanionConfig({ configPath: bankDisabled }, { bankId: "yuki-bank" }).enabled).toBe(false);
   });
 });

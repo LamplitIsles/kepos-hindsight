@@ -15,10 +15,6 @@ export interface RecallSettings {
 export interface DshPluginConfig {
   /** Path to the shared Hindsight coding-agent config. */
   configPath?: string;
-  /** Limit memory to these DSH agent presets. Defaults to the bundled yuki preset. */
-  activePresets?: string[];
-  /** Override the bank selected from the shared config. */
-  bankId?: string;
   recall?: Partial<RecallSettings>;
 }
 
@@ -26,15 +22,11 @@ export interface HindsightFileConfig {
   apiUrl?: string;
   apiToken?: string;
   bankId?: string;
-  dynamicBankId?: boolean;
-  bankIdTemplate?: string;
-  mapPathToBank?: Record<string, string>;
   disabled?: boolean;
   retainSessions?: boolean;
   harnesses?: Record<string, HindsightFileConfig>;
   banks?: Record<string, HindsightFileConfig>;
   companion?: {
-    activePresets?: string[];
     recall?: Partial<RecallSettings>;
   };
 }
@@ -45,7 +37,6 @@ export interface ResolvedCompanionConfig {
   apiToken?: string;
   bankId: string;
   retainSessions: boolean;
-  activePresets: string[];
   recall: RecallSettings;
 }
 

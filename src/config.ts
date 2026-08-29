@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 
+import { DEFAULT_BANK_ID, normalizeCompanionSettings } from "./settings.js";
+import type { CompanionSettings } from "./settings.js";
 import type { DshPluginConfig, HindsightFileConfig, RecallSettings, ResolvedCompanionConfig } from "./types.js";
 
-export const DEFAULT_BANK_ID = "coding-agent::workspace";
+export { DEFAULT_BANK_ID } from "./settings.js";
 
 export const DEFAULT_RECALL: RecallSettings = {
   budget: "low",
@@ -34,31 +36,8 @@ function readConfig(path: string): HindsightFileConfig {
   }
 }
 
-function normalizePath(path: string): string {
-  return resolve(path).replace(/\\/g, "/").replace(/\/+$/, "");
-}
-
-function mappedBank(cwd: string, map?: Record<string, string>): string | undefined {
-  if (!map) return undefined;
-  const directory = normalizePath(cwd);
-  let match: { path: string; bank: string } | undefined;
-  for (const [path, bank] of Object.entries(map)) {
-    if (typeof bank !== "string" || !bank.trim()) continue;
-    const candidate = normalizePath(path);
-    if (directory !== candidate && !directory.startsWith(`${candidate}/`)) continue;
-    if (!match || candidate.length > match.path.length) match = { path: candidate, bank };
-  }
-  return match?.bank;
-}
-
 function merge<T extends object>(base: T, layer: Partial<T> | undefined): T {
   return { ...base, ...(layer ?? {}) };
-}
-
-function validPresets(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const presets = value.filter((preset): preset is string => typeof preset === "string" && preset.trim() !== "");
-  return presets.length ? presets : undefined;
 }
 
 function recallSettings(...layers: Array<Partial<RecallSettings> | undefined>): RecallSettings {
@@ -83,22 +62,21 @@ function positiveInteger(value: unknown, fallback: number, maximum: number): num
 }
 
 /**
- * Resolves the shared coding-agent config without importing or changing any
- * bank strategy or mission. `harnesses.dsh.companion` is an optional local
- * extension; it is intentionally ignored by the official coding-agent adapter.
+ * Companion routing is explicit and static. The DSH session agent supplies
+ * turn data only; it never selects a bank or changes retention behavior.
  */
-export function resolveCompanionConfig(plugin: DshPluginConfig = {}, cwd = process.cwd()): ResolvedCompanionConfig {
+export function resolveCompanionConfig(
+  plugin: DshPluginConfig = {},
+  settings: CompanionSettings = normalizeCompanionSettings(undefined)
+): ResolvedCompanionConfig {
   const raw = readConfig(plugin.configPath ?? defaultConfigPath());
   const dsh = raw.harnesses?.dsh;
   const layered = merge(raw, dsh);
-  const bankId = plugin.bankId ?? mappedBank(cwd, layered.mapPathToBank) ?? layered.bankId ?? DEFAULT_BANK_ID;
+  const bankId = settings.bankId ?? DEFAULT_BANK_ID;
   const bank = raw.banks?.[bankId];
   const effective = merge(layered, bank);
   const companion = merge(dsh?.companion ?? {}, bank?.companion);
   const apiUrl = effective.apiUrl?.replace(/\/$/, "") ?? "https://api.hindsight.vectorize.io";
-  const activePresets = validPresets(plugin.activePresets)
-    ?? validPresets(companion.activePresets)
-    ?? ["yuki"];
 
   return {
     enabled: effective.disabled !== true,
@@ -106,7 +84,6 @@ export function resolveCompanionConfig(plugin: DshPluginConfig = {}, cwd = proce
     apiToken: typeof effective.apiToken === "string" && effective.apiToken ? effective.apiToken : undefined,
     bankId,
     retainSessions: effective.retainSessions !== false,
-    activePresets,
     recall: recallSettings(companion.recall, plugin.recall)
   };
 }
