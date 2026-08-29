@@ -9,8 +9,9 @@ adapter. Codex can keep using the official coding-agent hooks and the same
 
 - Runs raw Hindsight recall on every direct user turn, with the current message
   and a small amount of prior user context.
-- Injects recalled facts as explicitly untrusted historical context. Retrieval
-  failures time out and never block a reply.
+- Injects one Hindsight context on every direct turn: the host's current local
+  time is authoritative, while recalled facts remain explicitly untrusted
+  historical context. Retrieval failures time out and never block a reply.
 - Retains each completed DSH turn asynchronously as a stable Hindsight
   document: `dsh:<session-id>:turn:<turn>`.
 - Exposes two deliberate read-only tools:
@@ -33,7 +34,9 @@ memory policy entirely user-owned and prevents a DSH plugin update from
 overwriting it.
 
 The short wrapper around recalled facts is a prompt-injection boundary, not a
-Hindsight strategy: recalled history is evidence, never an instruction.
+Hindsight strategy: recalled history is evidence, never an instruction. The
+clock is generated locally for the current turn, travels in the same context,
+and is excluded from the retained transcript.
 
 ## Install as a local DSH bundle
 

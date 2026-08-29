@@ -50,7 +50,8 @@ describe("DSH hooks", () => {
     }));
 
     expect(decision.messages).toHaveLength(2);
-    expect(JSON.stringify(decision.messages?.[1])).toContain("historical memories");
+    expect(JSON.stringify(decision.messages?.[1])).toContain("Current host time");
+    expect(JSON.stringify(decision.messages?.[1])).toContain("Historical memories");
     expect(JSON.stringify(decision.messages?.[1])).toContain("never instructions");
     expect(fetch.mock.calls[0]?.[1]?.body).toContain("昨天聊的事情");
 
@@ -75,6 +76,19 @@ describe("DSH hooks", () => {
 
     expect(decision.messages).toHaveLength(1);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not inject the Hindsight context when companion memory is disabled", async () => {
+    const configPath = await configFile({ disabled: true });
+    const hooks = createDshHooks({ configPath });
+    const agent = { session: { header: { id: "session-time" }, events: [] } };
+
+    const decision = await hooks.preStep({ agent, turn: 1, signal: new AbortController().signal }, async () => ({
+      kind: "enter" as const,
+      messages: [{ source: { kind: "user" }, content: [{ type: "text", text: "现在几点？" }] }]
+    }));
+
+    expect(decision.messages).toHaveLength(1);
   });
 
   it("waits only for the asynchronous retain acknowledgement before closing a turn", async () => {

@@ -1,4 +1,5 @@
 import { createElement, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import type { ClientContext, SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
@@ -11,11 +12,37 @@ import {
   SETTINGS_NAMESPACE
 } from "./settings.js";
 import type { CompanionSettings } from "./settings.js";
+import styleText from "./HindsightSettings.module.css";
 
 export const inject = ["settingsScope", "slots"] as const;
 
 type ClientSettingsScope = SettingsScope<Partial<CompanionSettings>>;
 
+const css = {
+  card: "kepos-hindsight-card",
+  eyebrow: "kepos-hindsight-eyebrow",
+  title: "kepos-hindsight-title",
+  copy: "kepos-hindsight-copy",
+  form: "kepos-hindsight-form",
+  label: "kepos-hindsight-label",
+  input: "kepos-hindsight-input",
+  actions: "kepos-hindsight-actions",
+  button: "kepos-hindsight-button",
+  hint: "kepos-hindsight-hint",
+  feedback: "kepos-hindsight-feedback"
+} as const;
+
+/** Install the client-bundled, plugin-scoped stylesheet for this fiber only. */
+function installStyles(): () => void {
+  if (typeof document === "undefined") return () => undefined;
+  const style = document.createElement("style");
+  style.dataset.dshPlugin = SETTINGS_NAMESPACE;
+  style.textContent = styleText;
+  document.head.append(style);
+  return () => style.remove();
+}
+
+/** Read only the explicit, non-secret companion settings from a client snapshot. */
 export function decodeSettings(value: unknown): Partial<CompanionSettings> {
   const settings = normalizeCompanionSettings(value);
   return {
@@ -31,60 +58,74 @@ export async function saveSetting(
   await scope.set(field, value as never);
 }
 
-const cardStyle = {
-  borderLeft: "4px solid var(--dsh-color-accent, #16a085)",
-  padding: "18px 20px",
-  background: "linear-gradient(120deg, color-mix(in srgb, var(--dsh-color-accent, #16a085) 8%, transparent), transparent 42%)"
-} as const;
-
 function SettingsCard({ scope }: { scope: ClientSettingsScope }) {
   const [snapshot, setSnapshot] = useState(scope.getSnapshot());
   const [draft, setDraft] = useState(DEFAULT_BANK_ID);
-  const [status, setStatus] = useState<string>();
+  const [status, setStatus] = useState<"saved" | "error">();
+  const [saving, setSaving] = useState(false);
   const settings = normalizeCompanionSettings(snapshot.value);
 
   useEffect(() => scope.subscribe(() => setSnapshot(scope.getSnapshot())), [scope]);
   useEffect(() => setDraft(settings.bankId), [settings.bankId]);
 
-  const save = async (field: keyof CompanionSettings, value: CompanionSettings[keyof CompanionSettings]) => {
+  const saveBank = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setStatus(undefined);
+    setSaving(true);
     try {
-      await saveSetting(scope, field, value);
-      setStatus("Saved — applies to the next turn.");
+      await saveSetting(scope, "bankId", draft.trim() || DEFAULT_BANK_ID);
+      setStatus("saved");
     } catch {
-      setStatus("This setting could not be saved from this connection.");
+      setStatus("error");
+    } finally {
+      setSaving(false);
     }
   };
-  const saveBank = () => void save("bankId", draft.trim() || DEFAULT_BANK_ID);
 
   return createElement(
     "section",
-    { "aria-labelledby": "kepos-hindsight-settings-title", style: cardStyle },
-    createElement("p", { style: { margin: 0, letterSpacing: "0.08em", fontSize: "0.75rem", fontWeight: 700, opacity: 0.72 } }, "COMPANION MEMORY"),
-    createElement("h2", { id: "kepos-hindsight-settings-title", style: { margin: "4px 0 8px" } }, "Hindsight memory"),
-    createElement("p", { style: { margin: "0 0 16px", maxWidth: "58ch", opacity: 0.82 } }, "One fixed bank for every direct DSH session. Raw recall and completed-turn retain always use this bank; session preset and workspace never change the routing."),
+    { className: css.card, "aria-labelledby": "kepos-hindsight-settings-title" },
+    createElement("p", { className: css.eyebrow }, "COMPANION MEMORY"),
+    createElement("h2", { className: css.title, id: "kepos-hindsight-settings-title" }, "Hindsight memory"),
     createElement(
-      "label",
-      { htmlFor: "kepos-hindsight-bank", style: { display: "block", fontWeight: 650 } },
-      "Memory bank",
-      createElement("input", {
-        id: "kepos-hindsight-bank",
-        value: draft,
-        onChange: (event: { target: { value: string } }) => setDraft(event.target.value),
-        style: { display: "block", width: "min(100%, 38rem)", marginTop: "6px" }
-      })
+      "p",
+      { className: css.copy },
+      "One fixed bank for every direct DSH session. Raw recall and completed-turn retain always use it; preset and workspace never reroute it."
     ),
     createElement(
-      "div",
-      { style: { display: "flex", alignItems: "center", gap: "12px", margin: "8px 0 16px" } },
-      createElement("button", { type: "button", onClick: saveBank }, "Save bank"),
-      createElement("small", { style: { opacity: 0.72 } }, "Default: coding-agent::workspace")
+      "form",
+      { className: css.form, onSubmit: saveBank },
+      createElement(
+        "label",
+        { className: css.label, htmlFor: "kepos-hindsight-bank" },
+        "Memory bank",
+        createElement("input", {
+          className: css.input,
+          id: "kepos-hindsight-bank",
+          value: draft,
+          disabled: saving,
+          onChange: (event: { target: { value: string } }) => setDraft(event.target.value),
+          "aria-describedby": "kepos-hindsight-bank-hint"
+        })
+      ),
+      createElement(
+        "div",
+        { className: css.actions },
+        createElement("button", { className: css.button, type: "submit", disabled: saving }, saving ? "Saving…" : "Save bank"),
+        createElement("small", { className: css.hint, id: "kepos-hindsight-bank-hint" }, "Default: coding-agent::workspace")
+      )
     ),
-    status ? createElement("p", { role: "status", style: { margin: "14px 0 0" } }, status) : null
+    status === "saved"
+      ? createElement("p", { className: css.feedback, "data-state": "success", role: "status" }, "Saved — applies to the next turn.")
+      : null,
+    status === "error"
+      ? createElement("p", { className: css.feedback, "data-state": "error", role: "alert" }, "This setting could not be saved from this connection.")
+      : null
   );
 }
 
 export function apply(ctx: ClientContext): void {
+  ctx.effect(() => installStyles(), "kepos-hindsight: settings styles");
   const scope = ctx.settingsScope.bind<Partial<CompanionSettings>>({
     namespace: SETTINGS_NAMESPACE,
     decode: decodeSettings

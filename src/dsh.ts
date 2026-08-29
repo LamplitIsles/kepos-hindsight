@@ -113,10 +113,10 @@ export function createDshHooks(
     async preStep(payload: { agent: AgentLike; turn: number; signal: AbortSignal }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision> {
       const decision = await next();
       if (decision.kind !== "enter" || payload.signal.aborted || !isCompanionSession(payload.agent)) return decision;
-      const config = runtime();
-      if (!config.enabled) return decision;
       const prompt = directUserPrompt(decision.messages);
       if (!prompt) return decision;
+      const config = runtime();
+      if (!config.enabled) return decision;
       try {
         const history = recentUserText(payload.agent.session.events as never[] | undefined, config.recall.contextTurns);
         // DSH normally records the direct message after pre-step, but resumed
@@ -126,10 +126,10 @@ export function createDshHooks(
         const query = composeRecallQuery(previous, prompt, config.recall.maxQueryChars);
         const memories = await clientFor(config).recall(query, config.recall, timeoutSignal(payload.signal, config.recall.timeoutMs));
         const context = renderMemoryContext(unseenMemories(payload.agent.session.header.id, payload.turn, memories));
-        return context ? { ...decision, messages: [...(decision.messages ?? []), injection(context)] } : decision;
+        return { ...decision, messages: [...(decision.messages ?? []), injection(context)] };
       } catch {
         // Retrieval is supplementary; a slow or unavailable memory service never blocks conversation.
-        return decision;
+        return { ...decision, messages: [...(decision.messages ?? []), injection(renderMemoryContext([]))] };
       }
     },
 

@@ -30,6 +30,7 @@ export default defineConfig([
     target: "es2022",
     dts: true,
     clean: false,
+    loader: { ".css": "text" },
     external: ["react", ...dshExternals],
     outExtension: () => ({ js: ".js" }),
     banner: {
