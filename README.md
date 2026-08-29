@@ -124,3 +124,9 @@ pnpm build
 
 The tests use fake Hindsight HTTP responses and test-owned temporary config
 directories; they never read or modify a live bank.
+
+## Design and operating notes
+
+The [companion-memory notes](docs/research/hindsight-companion-memory.md) cover
+the coding/companion boundary, prompt and extraction policy, session backfill,
+cold-start cost, reranking, provider migration, and related integrations.
