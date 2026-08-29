@@ -65,7 +65,7 @@ Endpoint, credentials, per-bank missions, and the global `disabled` flag stay
 in the normal shared Hindsight config, `~/.hindsight/coding-agent.json`.
 
 Choose the DSH companion bank at **Settings → Plugins → Hindsight memory**.
-It defaults to `coding-agent::workspace`. This is the only routing choice: a
+It defaults to `yuki-memory`. This is the only routing choice: a
 DSH agent, its preset, its workspace, and the current working directory never
 select or remap the bank. The chosen bank is used by automatic recall,
 asynchronous retain, `hindsight_recall`, and `hindsight_reflect` alike.

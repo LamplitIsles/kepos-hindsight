@@ -112,7 +112,7 @@ function SettingsCard({ scope }: { scope: ClientSettingsScope }) {
         "div",
         { className: css.actions },
         createElement("button", { className: css.button, type: "submit", disabled: saving }, saving ? "Saving…" : "Save bank"),
-        createElement("small", { className: css.hint, id: "kepos-hindsight-bank-hint" }, "Default: coding-agent::workspace")
+        createElement("small", { className: css.hint, id: "kepos-hindsight-bank-hint" }, "Default: yuki-memory")
       )
     ),
     status === "saved"

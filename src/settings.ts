@@ -1,5 +1,5 @@
 export const SETTINGS_NAMESPACE = "kepos-hindsight";
-export const DEFAULT_BANK_ID = "coding-agent::workspace";
+export const DEFAULT_BANK_ID = "yuki-memory";
 
 export interface CompanionSettings {
   bankId: string;

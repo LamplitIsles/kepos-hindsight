@@ -8,7 +8,7 @@ import {
 } from "../src/settings.js";
 
 describe("companion bank settings", () => {
-  it("accepts only a non-empty explicit bank and defaults to coding-agent::workspace", () => {
+  it("accepts only a non-empty explicit bank and defaults to yuki-memory", () => {
     expect(normalizeCompanionSettings(undefined)).toEqual({ bankId: DEFAULT_BANK_ID });
     expect(decodeSettings({ bankId: "  neil::companion  ", ignored: true })).toEqual({
       bankId: "neil::companion"
