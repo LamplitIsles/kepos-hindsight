@@ -4,6 +4,10 @@ Operating notes as of 2026-08-29. This is the entry point; detailed notes are
 split by subject so provider, prompt, retrieval, and migration decisions can
 evolve independently.
 
+For the stable product comparison, runtime contract, and design philosophy, see
+[Companion memory design](../companion-memory-design.md). The notes below retain
+the deeper research and operational evidence behind that design.
+
 ## Topic index
 
 - [Coding-agent memory versus companion memory](hindsight-coding-vs-companion.md)
