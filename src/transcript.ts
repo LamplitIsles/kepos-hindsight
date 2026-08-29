@@ -60,3 +60,26 @@ export function transcriptForTurn(events: readonly DshEvent[] | undefined, targe
   }
   return turns;
 }
+
+/** All completed user/assistant messages through the target turn. */
+export function transcriptThroughTurn(events: readonly DshEvent[] | undefined, targetTurn: number): TranscriptTurn[] {
+  const turns: TranscriptTurn[] = [];
+  let activeTurn: number | undefined;
+  for (const event of events ?? []) {
+    if (event.type === "turn/start" && isRecord(event.data) && typeof event.data.turn === "number") {
+      activeTurn = event.data.turn;
+      continue;
+    }
+    if (activeTurn === undefined || activeTurn > targetTurn) continue;
+    const timestamp = typeof event.time === "number" ? new Date(event.time).toISOString() : undefined;
+    if (event.type === "user/message" && isHumanMessage(event.data)) {
+      const content = textOf(event.data);
+      if (content) turns.push({ role: "user", content, ...(timestamp ? { timestamp } : {}) });
+    }
+    if (event.type === "assistant/message" && isRecord(event.data)) {
+      const content = textOf(event.data.message);
+      if (content) turns.push({ role: "assistant", content, ...(timestamp ? { timestamp } : {}) });
+    }
+  }
+  return turns;
+}

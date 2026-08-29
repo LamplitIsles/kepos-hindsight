@@ -1,49 +1,32 @@
 import { createHash } from "node:crypto";
+import { HindsightClient as HindsightSdkClient } from "@vectorize-io/hindsight-client";
 
 import type { RecallSettings, RecalledMemory, TranscriptTurn } from "./types.js";
 
-export type FetchImplementation = typeof fetch;
-
+/** Small DSH-shaped adapter over the official typed Hindsight SDK. */
 export class HindsightClient {
+  private readonly client: HindsightSdkClient;
+
   constructor(
-    private readonly apiUrl: string,
+    apiUrl: string,
     private readonly bankId: string,
-    private readonly apiToken?: string,
-    private readonly fetchImplementation: FetchImplementation = fetch
-  ) {}
-
-  private url(path: string): string {
-    return `${this.apiUrl}/v1/default/banks/${encodeURIComponent(this.bankId)}${path}`;
-  }
-
-  private headers(): HeadersInit {
-    return {
-      "content-type": "application/json",
-      ...(this.apiToken ? { authorization: `Bearer ${this.apiToken}` } : {})
-    };
-  }
-
-  private async request(path: string, body: unknown, signal?: AbortSignal): Promise<unknown> {
-    const response = await this.fetchImplementation(this.url(path), {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(body),
-      signal
+    apiToken?: string
+  ) {
+    this.client = new HindsightSdkClient({
+      baseUrl: apiUrl,
+      ...(apiToken ? { apiKey: apiToken } : {})
     });
-    if (!response.ok) throw new Error(`Hindsight ${path} returned ${response.status}`);
-    return response.json() as Promise<unknown>;
   }
 
   async recall(query: string, settings: RecallSettings, signal?: AbortSignal): Promise<RecalledMemory[]> {
-    const response = await this.request("/memories/recall", {
-      query,
+    const response = await this.client.recall(this.bankId, query, {
       budget: settings.budget,
-      max_tokens: settings.maxTokens,
       types: settings.types,
-      prefer_observations: settings.preferObservations
-    }, signal);
-    const results = isRecord(response) && Array.isArray(response.results) ? response.results : [];
-    return results
+      maxTokens: settings.maxTokens,
+      preferObservations: settings.preferObservations,
+      signal
+    });
+    return response.results
       .map(toMemory)
       .filter((memory): memory is RecalledMemory => memory !== undefined)
       .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
@@ -51,30 +34,35 @@ export class HindsightClient {
   }
 
   async reflect(query: string, signal?: AbortSignal): Promise<string> {
-    const response = await this.request("/reflect", { query, budget: "low" }, signal);
-    return isRecord(response) && typeof response.text === "string" ? response.text.trim() : "";
+    const response = await this.client.reflect(this.bankId, query, { budget: "low", signal });
+    return response.text.trim();
   }
 
-  /** Retain one completed DSH turn as an idempotent, asynchronous document. */
-  async retain(sessionId: string, turn: number, turns: TranscriptTurn[]): Promise<void> {
+  /** Update one session document with a full replace or an incremental append. */
+  async retain(
+    sessionId: string,
+    turn: number,
+    turns: TranscriptTurn[],
+    updateMode: "replace" | "append"
+  ): Promise<void> {
     if (!turns.length) return;
-    const content = JSON.stringify(turns);
-    const documentId = `dsh:${sessionId}:turn:${turn}`;
-    const operationId = deterministicOperationId(`${this.bankId}\n${documentId}\n${content}`);
-    await this.request("/memories", {
+    // A trailing newline keeps the stored session a valid JSONL transcript even
+    // when Hindsight implements append as literal text concatenation.
+    const content = `${turns.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+    const documentId = `dsh:${sessionId}`;
+    const operationId = deterministicOperationId(`${this.bankId}\n${documentId}\n${updateMode}\n${content}`);
+    await this.client.retain(this.bankId, content, {
       async: true,
-      operation_id: operationId,
-      items: [{
-        content,
-        document_id: documentId,
-        tags: ["source:chat", "harness:dsh", "mode:companion"],
-        metadata: {
-          source: "chat",
-          harness: "dsh",
-          session_id: sessionId,
-          turn: String(turn)
-        }
-      }]
+      operationId,
+      documentId,
+      updateMode,
+      tags: ["source:chat", "harness:dsh", "mode:companion"],
+      metadata: {
+        source: "chat",
+        harness: "dsh",
+        session_id: sessionId,
+        turn: String(turn)
+      }
     });
   }
 }

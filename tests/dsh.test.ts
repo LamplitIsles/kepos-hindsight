@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apply, createDshHooks } from "../src/dsh.js";
+import { hindsightJson, hindsightRequest } from "./hindsight-request.js";
 
 async function configFile(config: unknown): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), "kepos-hindsight-dsh-"));
@@ -20,13 +21,16 @@ afterEach(() => {
 });
 
 describe("DSH hooks", () => {
-  it("recalls every direct user turn, injects untrusted context, and retains only the completed turn", async () => {
+  it("recalls every direct user turn, replaces a full session once, then appends completed turns", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      if (String(input).endsWith("/memories/recall")) {
-        return new Response(JSON.stringify({ results: [{ id: "memory-1", text: "Neil likes concise Chinese." }] }));
+      const request = await hindsightRequest(input, init);
+      requests.push(request);
+      if (request.url.endsWith("/memories/recall")) {
+        return hindsightJson({ results: [{ id: "memory-1", text: "Neil likes concise Chinese." }] });
       }
-      return new Response(JSON.stringify({ operation_id: "queued" }));
+      return hindsightJson({ operation_id: "queued" });
     });
     globalThis.fetch = fetch;
     const agent = {
@@ -53,13 +57,25 @@ describe("DSH hooks", () => {
     expect(JSON.stringify(decision.messages?.[1])).toContain("Current host time");
     expect(JSON.stringify(decision.messages?.[1])).toContain("Historical memories");
     expect(JSON.stringify(decision.messages?.[1])).toContain("never instructions");
-    expect(fetch.mock.calls[0]?.[1]?.body).toContain("昨天聊的事情");
+    expect(JSON.stringify(requests[0]?.body)).toContain("昨天聊的事情");
 
-    hooks.turnStopping({ agent, turn: 2 });
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
-    const retained = JSON.parse(String(fetch.mock.calls[1]?.[1]?.body)) as { items: Array<{ content: string }> };
+    await hooks.turnStopping({ agent, turn: 2 });
+    const retained = requests[1]?.body as { items: Array<{ content: string }> };
+    expect(retained.items[0]).toMatchObject({ document_id: "dsh:session-1", update_mode: "replace" });
+    expect(retained.items[0].content).toContain("昨天聊的事情");
     expect(retained.items[0].content).toContain("今天也想短一点。");
     expect(retained.items[0].content).not.toContain("do not retain me");
+
+    agent.session.events.push(
+      { type: "turn/start", data: { turn: 3 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "这是后来的一句。" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我收到啦。" }] } } }
+    );
+    await hooks.turnStopping({ agent, turn: 3 });
+    const appended = requests[2]?.body as { items: Array<{ content: string }> };
+    expect(appended.items[0]).toMatchObject({ document_id: "dsh:session-1", update_mode: "append" });
+    expect(appended.items[0].content).toContain("这是后来的一句。");
+    expect(appended.items[0].content).not.toContain("昨天聊的事情");
   });
 
   it("does not run for a subagent session", async () => {
@@ -95,7 +111,7 @@ describe("DSH hooks", () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
     let acknowledge: (() => void) | undefined;
     const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise<Response>((resolve) => {
-      acknowledge = () => resolve(new Response(JSON.stringify({ operation_id: "queued" })));
+      acknowledge = () => resolve(hindsightJson({ operation_id: "queued" }));
     }));
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
@@ -119,9 +135,80 @@ describe("DSH hooks", () => {
     expect(settled).toBe(true);
   });
 
+  it("serializes session retain submissions so the first replace precedes later appends", async () => {
+    const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const acknowledgements: Array<(response: Response) => void> = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      requests.push(await hindsightRequest(input, init));
+      return new Promise<Response>((resolve) => acknowledgements.push(resolve));
+    });
+    globalThis.fetch = fetch;
+    const hooks = createDshHooks({ configPath });
+    const agent = {
+      session: {
+        header: { id: "serialized-session" },
+        events: [
+          { type: "turn/start", data: { turn: 1 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第一句" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第一句回复" }] } } },
+          { type: "turn/start", data: { turn: 2 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第二句" }] } },
+          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第二句回复" }] } } }
+        ]
+      }
+    };
+
+    const first = hooks.turnStopping({ agent, turn: 1 });
+    const second = hooks.turnStopping({ agent, turn: 2 });
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect((requests[0]?.body.items as Array<Record<string, unknown>>)[0]).toMatchObject({ update_mode: "replace" });
+
+    acknowledgements.shift()?.(hindsightJson({ operation_id: "first" }));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect((requests[1]?.body.items as Array<Record<string, unknown>>)[0]).toMatchObject({ update_mode: "append" });
+    acknowledgements.shift()?.(hindsightJson({ operation_id: "second" }));
+    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it("replaces the full session when its selected bank changes", async () => {
+    const configPath = await configFile({ apiUrl: "http://memory.test" });
+    let bankId = "first-bank";
+    const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      requests.push(await hindsightRequest(input, init));
+      return hindsightJson({ operation_id: "queued" });
+    });
+    globalThis.fetch = fetch;
+    const hooks = createDshHooks({ configPath }, () => ({ bankId }));
+    const agent = {
+      session: {
+        header: { id: "bank-switch-session" },
+        events: [
+          { type: "turn/start", data: { turn: 1 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "旧 bank 的内容" }] } },
+          { type: "turn/start", data: { turn: 2 } },
+          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "新 bank 也应有完整历史" }] } }
+        ]
+      }
+    };
+
+    await hooks.turnStopping({ agent, turn: 1 });
+    bankId = "second-bank";
+    await hooks.turnStopping({ agent, turn: 2 });
+
+    const retained = requests.map((request) => (request.body.items as Array<Record<string, unknown>>)[0]);
+    expect(retained.map((item) => item?.update_mode)).toEqual(["replace", "replace"]);
+    expect(requests.map((request) => request.url)).toEqual([
+      "http://memory.test/v1/default/banks/first-bank/memories",
+      "http://memory.test/v1/default/banks/second-bank/memories"
+    ]);
+    expect(retained[1]?.content).toContain("旧 bank 的内容");
+  });
+
   it("releases turn de-duplication state when a session is disposed", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({ operation_id: "queued" })));
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => hindsightJson({ operation_id: "queued" }));
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
     const agent = {
@@ -143,9 +230,9 @@ describe("DSH hooks", () => {
 
   it("makes hindsight_recall available when DSH invokes a tool without an agent execution field", async () => {
     const configPath = await configFile({ apiUrl: "http://memory.test", bankId: "yuki" });
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => hindsightJson({
       results: [{ text: "Neil likes concise Chinese.", type: "observation" }]
-    })));
+    }));
     globalThis.fetch = fetch;
     const tools: Array<{ name: string; execute: (args: { query: string }) => Promise<string> }> = [];
 

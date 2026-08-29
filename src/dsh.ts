@@ -11,7 +11,7 @@ import {
   normalizeCompanionSettings,
   SETTINGS_NAMESPACE
 } from "./settings.js";
-import { recentUserText, textOf, transcriptForTurn } from "./transcript.js";
+import { recentUserText, textOf, transcriptForTurn, transcriptThroughTurn } from "./transcript.js";
 import type { CompanionSettings } from "./settings.js";
 import type { DshPluginConfig, RecalledMemory, ResolvedCompanionConfig } from "./types.js";
 
@@ -45,9 +45,30 @@ type HostContext = {
 
 const seenMemories = new Map<string, Map<string, number>>();
 const retainedTurns = new Map<string, Set<number>>();
+const retainedSessionTargets = new Map<string, string>();
+const retainSubmissionQueues = new Map<string, Promise<void>>();
 
 function clientFor(config: ResolvedCompanionConfig): HindsightClient {
   return new HindsightClient(config.apiUrl, config.bankId, config.apiToken);
+}
+
+function retainTarget(config: ResolvedCompanionConfig): string {
+  return `${config.apiUrl}\n${config.bankId}`;
+}
+
+function enqueueRetain(sessionId: string, task: () => Promise<void>): Promise<void> {
+  const previous = retainSubmissionQueues.get(sessionId) ?? Promise.resolve();
+  const queued = previous.catch(() => undefined).then(task);
+  retainSubmissionQueues.set(sessionId, queued);
+  void queued.then(
+    () => {
+      if (retainSubmissionQueues.get(sessionId) === queued) retainSubmissionQueues.delete(sessionId);
+    },
+    () => {
+      if (retainSubmissionQueues.get(sessionId) === queued) retainSubmissionQueues.delete(sessionId);
+    }
+  );
+  return queued;
 }
 
 function isCompanionSession(agent: AgentLike): boolean {
@@ -142,23 +163,31 @@ export function createDshHooks(
       retainedTurns.set(sessionId, turns);
       if (turns.has(payload.turn)) return;
       turns.add(payload.turn);
-      const transcript = transcriptForTurn(payload.agent.session.events as never[] | undefined, payload.turn);
-      try {
-        // The Hindsight operation remains asynchronous. Await only the small
-        // HTTP acknowledgement so DSH does not finish this turn before the
-        // retain request has reached the server.
-        await clientFor(config).retain(sessionId, payload.turn, transcript);
-      } catch (error) {
-        retainedTurns.get(sessionId)?.delete(payload.turn);
-        const detail = error instanceof Error ? error.message : String(error);
-        console.warn(`[kepos-hindsight] retain submission failed for session ${sessionId}, turn ${payload.turn}: ${detail}`);
-      }
+      await enqueueRetain(sessionId, async () => {
+        const target = retainTarget(config);
+        const updateMode = retainedSessionTargets.get(sessionId) === target ? "append" : "replace";
+        const transcript = updateMode === "replace"
+          ? transcriptThroughTurn(payload.agent.session.events as never[] | undefined, payload.turn)
+          : transcriptForTurn(payload.agent.session.events as never[] | undefined, payload.turn);
+        try {
+          // The Hindsight operation remains asynchronous. Await only the small
+          // HTTP acknowledgement so DSH does not finish this turn before the
+          // retain request has reached the server.
+          await clientFor(config).retain(sessionId, payload.turn, transcript, updateMode);
+          retainedSessionTargets.set(sessionId, target);
+        } catch (error) {
+          retainedTurns.get(sessionId)?.delete(payload.turn);
+          const detail = error instanceof Error ? error.message : String(error);
+          console.warn(`[kepos-hindsight] retain submission failed for session ${sessionId}, turn ${payload.turn}: ${detail}`);
+        }
+      });
     },
 
     disposed(payload: { agent: AgentLike }): void {
       const sessionId = payload.agent.session.header.id;
       seenMemories.delete(sessionId);
       retainedTurns.delete(sessionId);
+      retainedSessionTargets.delete(sessionId);
     }
   };
 }

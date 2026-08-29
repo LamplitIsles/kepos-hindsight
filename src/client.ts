@@ -90,7 +90,7 @@ function SettingsCard({ scope }: { scope: ClientSettingsScope }) {
     createElement(
       "p",
       { className: css.copy },
-      "One fixed bank for every direct DSH session. Raw recall and completed-turn retain always use it; preset and workspace never reroute it."
+      "One fixed bank for every direct DSH session. Raw recall and session-document retain always use it; preset and workspace never reroute it."
     ),
     createElement(
       "form",

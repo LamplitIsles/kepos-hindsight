@@ -12,8 +12,9 @@ adapter. Codex can keep using the official coding-agent hooks and the same
 - Injects one Hindsight context on every direct turn: the host's current local
   time is authoritative, while recalled facts remain explicitly untrusted
   historical context. Retrieval failures time out and never block a reply.
-- Retains each completed DSH turn asynchronously as a stable Hindsight
-  document: `dsh:<session-id>:turn:<turn>`.
+- Retains into one stable Hindsight document per session: `dsh:<session-id>`.
+  The first completed turn after DSH starts replaces it with the full available
+  session transcript; later turns append only their JSONL delta.
 - Exposes two deliberate read-only tools:
   - `hindsight_recall` — raw fact retrieval, no LLM call.
   - `hindsight_reflect` — bank-defined synthesis for a question that raw facts
