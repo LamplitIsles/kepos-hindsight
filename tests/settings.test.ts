@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { decodeSettings, saveSetting } from "../src/client.js";
+import {
+  decodeSettings,
+  saveSetting,
+  syncBankIdDraft
+} from "../src/client.js";
 import {
   DEFAULT_BANK_ID,
   normalizeCompanionSettings,
@@ -25,5 +29,22 @@ describe("companion bank settings", () => {
       "neil::companion"
     );
     expect(calls).toEqual([{ field: "bankId", value: "neil::companion" }]);
+  });
+
+  it("keeps a staged bank across failed or conflicting snapshot reloads", () => {
+    const dirty = { value: "staged-bank", saved: "saved-bank" };
+    expect(syncBankIdDraft(dirty, "saved-bank")).toBe(dirty);
+    expect(syncBankIdDraft(dirty, "remote-bank")).toEqual({
+      value: "staged-bank",
+      saved: "remote-bank"
+    });
+    expect(syncBankIdDraft({ value: "saved-bank", saved: "saved-bank" }, "remote-bank")).toEqual({
+      value: "remote-bank",
+      saved: "remote-bank"
+    });
+    expect(syncBankIdDraft({ value: "  saved-bank  ", saved: "saved-bank" }, "remote-bank")).toEqual({
+      value: "remote-bank",
+      saved: "remote-bank"
+    });
   });
 });
