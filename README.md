@@ -15,10 +15,9 @@ adapter. Codex can keep using the official coding-agent hooks and the same
 - Retains into one stable Hindsight document per session: `dsh:<session-id>`.
   The first completed turn after DSH starts replaces it with the full available
   session transcript; later turns append only their JSONL delta.
-- Exposes two deliberate read-only tools:
-  - `hindsight_recall` — raw fact retrieval, no LLM call.
-  - `hindsight_reflect` — bank-defined synthesis for a question that raw facts
-    cannot answer.
+- Exposes one deliberate read-only tool: `hindsight_reflect`, for bank-defined
+  synthesis across multiple memories when the automatically supplied raw facts
+  and current conversation cannot answer the question.
 
 It does **not** seed a codebase, create knowledge pages, auto-reflect, import
 a bank template, or enable subagents.
@@ -40,7 +39,7 @@ This adapter changes the product contract rather than merely changing a prompt:
 | Repetition | Coding lifecycle decides when synthesis/guidance is useful | Every result remains eligible on every relevant turn; no cross-turn suppression |
 | Retention | Coding sessions, repository facts, Git/doc strategies | Clean user/assistant dialogue in one repairable document per chat session |
 | Reflect | Part of the coding knowledge workflow | Deliberate explicit tool for questions that need synthesis |
-| Tools | Knowledge pages, project search/capture/ingest, Reflect | Minimal read-only `hindsight_recall` and `hindsight_reflect` |
+| Tools | Knowledge pages, project search/capture/ingest, Reflect | One read-only `hindsight_reflect` tool |
 | Routing | Workspace-derived banks | Workspace, CWD, and preset never reroute the selected bank |
 | Policy ownership | Ships coding missions and strategies | Sends no strategy or mission; the bank owner defines companion memory policy |
 | Agent topology | Supports coding-agent and subagent workflows | Direct companion sessions only; subagents are excluded |
@@ -98,7 +97,7 @@ Choose the DSH companion bank at **Settings → Plugins → Hindsight memory**.
 It defaults to `yuki-memory`. This is the only routing choice: a
 DSH agent, its preset, its workspace, and the current working directory never
 select or remap the bank. The chosen bank is used by automatic recall,
-asynchronous retain, `hindsight_recall`, and `hindsight_reflect` alike.
+asynchronous retain, and `hindsight_reflect` alike.
 
 Saving is a live DSH setting and applies on the next turn. DSH intentionally
 allows Settings RPC writes only from its loopback Web UI, so change it on the

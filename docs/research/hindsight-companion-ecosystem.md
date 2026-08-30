@@ -66,7 +66,7 @@ memory and deliberate tools can coexist. For DSH, the useful combination is:
 
 - automatic raw recall on every direct message;
 - ordered background retain after each completed exchange;
-- explicit recall and reflect tools when Yuki deliberately searches memory;
+- one explicit Reflect tool when Yuki deliberately thinks across shared history;
 - bank and prompt configuration owned outside the plugin.
 
 The DSH plugin intentionally omits multi-agent and coding strategy behavior.

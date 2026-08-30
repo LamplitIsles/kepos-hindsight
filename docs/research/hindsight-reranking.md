@@ -38,16 +38,15 @@ candidate count, batch size, and concurrent requests still matter.
 
 ## Scope of the environment variable
 
-`HINDSIGHT_API_RERANKER_PROVIDER` is server-wide. It affects recall regardless
-of whether the caller is automatic companion recall or an explicit recall
-tool. Reflect also performs retrieval internally, so its retrieval stage uses
-the same provider. This is not a per-request quality switch in the current
-deployment.
+`HINDSIGHT_API_RERANKER_PROVIDER` is server-wide. It affects automatic
+companion recall. Reflect also performs retrieval internally, so its retrieval
+stage uses the same provider. This is not a per-request quality switch in the
+current deployment.
 
 ## Decision
 
 Use RRF for now. Every-turn companion recall values bounded latency and service
-stability more than an unmeasured English cross-encoder gain. Explicit reflect
+stability more than an unmeasured English cross-encoder gain. Explicit Reflect
 remains available when the task needs deeper synthesis.
 
 Reconsider a neural reranker only after testing a multilingual remote/GPU
