@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 import z from "@deepseek-ai/schemastery";
+import type {} from "@deepseek-ai/dsh-system-prompt";
 
 import { HindsightClient } from "./api.js";
 import { resolveCompanionConfig } from "./config.js";
@@ -16,7 +17,12 @@ import type { CompanionSettings } from "./settings.js";
 import type { DshPluginConfig, ResolvedCompanionConfig } from "./types.js";
 
 export const name = "kepos-hindsight";
-export const inject = ["agents", "settings", "tools"] as const;
+export const inject = ["agents", "settings", "systemPrompt", "tools"] as const;
+
+export const REFLECT_PROMPT_TEXT =
+  "Relevant raw memories are already supplied each turn. Reserve hindsight_reflect for shared-history synthesis: a user-invited look back, or an answer that must reconcile multiple episodes about change, recurring dynamics, milestones, promises, boundaries, unfinished threads, or rupture and repair. "
+  + "Answer single facts, preferences, present-moment support, and ordinary personalization directly from the conversation and supplied memories. "
+  + "When Reflect fits, ask one focused question with the subject, perspective, and time frame. Treat its result as fallible evidence: preserve attribution and uncertainty, distinguish memory from inference and past from present, and answer in your own companion voice. Ground interpretations in remembered events. Offer psychological interpretations only when the user asks for them; never present a diagnosis or hidden motive as fact.";
 
 export const CompanionSettingsSchema = z.object({
   bankId: z.string().min(1).default(DEFAULT_COMPANION_SETTINGS.bankId)
@@ -33,7 +39,12 @@ type AgentLike = {
 };
 
 type PreStepDecision = { kind: string; messages?: unknown[] };
-type ToolContext = { tools: { register: (tool: unknown) => void } };
+type ModelSurfaceContext = {
+  systemPrompt: {
+    section: (section: { name: string; order: number; text: string }) => void;
+  };
+  tools: { register: (tool: unknown) => void };
+};
 type ToolExecution = { signal: AbortSignal };
 type RuntimeResolver = () => ResolvedCompanionConfig;
 type HostContext = {
@@ -41,7 +52,7 @@ type HostContext = {
     register: (namespace: unknown, schema: unknown, options: unknown) => { get: () => unknown };
   };
   on: (event: string, listener: unknown, options?: unknown) => void;
-  inject: (services: string[], callback: (context: ToolContext) => void) => void;
+  inject: (services: string[], callback: (context: ModelSurfaceContext) => void) => void;
 };
 
 const retainedTurns = new Map<string, Set<number>>();
@@ -194,27 +205,16 @@ function textOutput(value: string): Array<{ type: "text"; text: string }> {
   return [{ type: "text", text: value }];
 }
 
-function registerTools(toolContext: ToolContext, runtime: RuntimeResolver): void {
-  const recallTimeoutMs = runtime().recall.timeoutMs;
-  toolContext.tools.register({
-    name: "hindsight_recall",
-    description: "Look up raw historical memories relevant to a question. Use it for a specific past fact or preference; it does not call an LLM or change the bank.",
-    parameters: toolParameters(),
-    output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
-    timeoutMs: recallTimeoutMs,
-    async execute(args: { query: string }, execution: ToolExecution) {
-      const config = runtime();
-      if (!config.enabled) return "Hindsight companion memory is disabled.";
-      const memories = await clientFor(config).recall(args.query, config.recall, execution.signal);
-      return memories.length
-        ? memories.map((memory) => `- ${memory.type ? `[${memory.type}] ` : ""}${memory.text}`).join("\n")
-        : "No relevant memory was found.";
-    }
+function registerModelSurface(context: ModelSurfaceContext, runtime: RuntimeResolver): void {
+  context.systemPrompt.section({
+    name: "tool:hindsight-reflect",
+    order: 114,
+    text: REFLECT_PROMPT_TEXT
   });
 
-  toolContext.tools.register({
+  context.tools.register({
     name: "hindsight_reflect",
-    description: "Deliberately synthesize a question across long-term memory. Slower than hindsight_recall; use only for patterns, retrospectives, or a question raw facts cannot answer.",
+    description: "Synthesize shared history across multiple long-term memories when the Reflect guideline applies. Read-only, LLM-backed, and slow.",
     parameters: toolParameters(),
     output: { schema: { type: "string" }, render: (_args: unknown, value: string) => textOutput(value) },
     timeoutMs: REFLECT_TOOL_TIMEOUT_MS,
@@ -238,7 +238,7 @@ export function apply(ctx: HostContext, pluginConfig: DshPluginConfig = {}): voi
   ctx.on("agent/pre-step", hooks.preStep, { prepend: true });
   ctx.on("agent/turn-stopping", hooks.turnStopping);
   ctx.on("agent/disposed", hooks.disposed);
-  ctx.inject(["tools"], (toolContext) => registerTools(toolContext, runtime));
+  ctx.inject(["systemPrompt", "tools"], (context) => registerModelSurface(context, runtime));
 }
 
 export default { name, inject, apply };

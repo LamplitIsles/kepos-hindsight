@@ -39,7 +39,7 @@ The companion adapter makes the opposite choices where the domain requires it:
 | Client-side result suppression | Coding workflow controls synthesis cadence | None: a still-relevant memory may be injected on consecutive turns |
 | Session storage | Coding-session/project knowledge | One stable JSONL dialogue document per DSH session |
 | Synthesis | Useful automatically for project orientation | Explicit `hindsight_reflect`, reserved for pattern or retrospective questions |
-| Model-facing tools | Broad project knowledge surface | Two read-only tools: recall and Reflect |
+| Model-facing tools | Broad project knowledge surface | One read-only Reflect tool |
 | Bank routing | Derived from project/workspace context | Chosen explicitly in DSH Settings and unaffected by workspace |
 | Subagents | Part of supported coding workflows | Excluded so delegated work cannot become relationship memory |
 | Memory policy | Coding missions, strategies, and page rules ship with the integration | Bank-owned missions and extraction rules; the plugin never overwrites them |
@@ -98,16 +98,21 @@ reconstructing the relationship from incomplete facts.
 
 ### Explicit tools
 
-The model receives only:
+The model receives only `hindsight_reflect`, for deliberate synthesis across
+multiple memories. A system-prompt guideline tells it that raw memories are
+already supplied automatically and frames Reflect as a companion deliberately
+thinking across shared history, not as an analyst profiling the user. It is for
+invited look-backs and multi-episode questions about change, recurring dynamics,
+milestones, promises, boundaries, unfinished threads, rupture, or repair. It
+explicitly excludes ordinary affection and empathy, single facts or preferences,
+and memory performance. Psychological interpretations require a user invitation
+and grounding in remembered events; diagnoses and hidden motives are never
+presented as fact.
 
-- `hindsight_recall` for a specific historical fact, preference, or episode;
-- `hindsight_reflect` for deliberate synthesis across many memories.
-
-Both tools participate in DSH's cooperative cancellation contract. Raw recall
-keeps its short configured retrieval deadline. Reflect has a 330-second outer
-tool budget around the deployed server's 300-second LLM budget, leaving room for
-transport and response handling while still producing DSH's structured timeout
-result.
+The tool participates in DSH's cooperative cancellation contract. Reflect has
+a 330-second outer tool budget around the deployed server's 300-second LLM
+budget, leaving room for transport and response handling while still producing
+DSH's structured timeout result.
 
 No knowledge-page, initiative-capture, codebase-seeding, document-ingest, or
 write tool is exposed. The automatic session-retain path is the sole writer.

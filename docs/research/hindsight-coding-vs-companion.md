@@ -17,7 +17,7 @@ memory are different.
 | Conversation goal | Final implementation state and developer-relevant decisions | Personal continuity, exact attribution, emotional episodes, mutual preferences, and open threads |
 | Write cadence | Session/Stop lifecycle plus repository deepening | Ordered asynchronous updates to one stable document per DSH session |
 | Automatic retrieval | First-prompt reflect and generated knowledge pages | Raw recall on every direct user turn |
-| Deliberate retrieval | Recall/reflect tools and knowledge pages | Explicit recall tool; reflect only for cross-memory synthesis |
+| Deliberate retrieval | Recall/reflect tools and knowledge pages | Reflect only for deliberate cross-memory synthesis |
 | Acceptable omission | Social detail is usually noise | Vivid, warm, funny, jealous, tense, or repaired moments can be the point |
 
 ## Why separate banks matter

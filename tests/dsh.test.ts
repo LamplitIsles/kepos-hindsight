@@ -309,11 +309,10 @@ describe("DSH hooks", () => {
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   });
 
-  it("declares tool deadlines, leaves timeout handling to DSH, and cancels pending memory work", async () => {
+  it("exposes only deliberate reflection with its deadline and cancellation", async () => {
     const configPath = await configFile({
       apiUrl: "http://memory.test",
-      bankId: "yuki",
-      harnesses: { dsh: { companion: { recall: { timeoutMs: 6_789 } } } }
+      bankId: "yuki"
     });
     const requests: Request[] = [];
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
@@ -334,12 +333,14 @@ describe("DSH hooks", () => {
     apply({
       settings: { register: () => ({ get: () => ({ bankId: "yuki" }) }) },
       on,
-      inject: (_services, callback) => callback({ tools: { register: (tool: unknown) => tools.push(tool as typeof tools[number]) } })
+      inject: (_services, callback) => callback({
+        systemPrompt: { section: () => undefined },
+        tools: { register: (tool: unknown) => tools.push(tool as typeof tools[number]) }
+      })
     }, { configPath });
 
-    const recall = tools.find((tool) => tool.name === "hindsight_recall");
     const reflect = tools.find((tool) => tool.name === "hindsight_reflect");
-    expect(recall?.timeoutMs).toBe(6_789);
+    expect(tools.map((tool) => tool.name)).toEqual(["hindsight_reflect"]);
     expect(reflect?.timeoutMs).toBe(330_000);
     expect(on.mock.calls.map(([event]) => event)).toEqual([
       "agent/pre-step",
@@ -347,18 +348,11 @@ describe("DSH hooks", () => {
       "agent/disposed"
     ]);
 
-    const recallController = new AbortController();
-    const recalling = recall?.execute({ query: "reply preference" }, { signal: recallController.signal });
-    await vi.waitFor(() => expect(requests).toHaveLength(1));
-    recallController.abort(new Error("user cancelled recall"));
-    await expect(recalling).rejects.toBeDefined();
-    expect(requests[0]?.signal.aborted).toBe(true);
-
     const reflectController = new AbortController();
     const reflecting = reflect?.execute({ query: "summarize patterns" }, { signal: reflectController.signal });
-    await vi.waitFor(() => expect(requests).toHaveLength(2));
+    await vi.waitFor(() => expect(requests).toHaveLength(1));
     reflectController.abort(new Error("user cancelled reflect"));
     await expect(reflecting).rejects.toBeDefined();
-    expect(requests[1]?.signal.aborted).toBe(true);
+    expect(requests[0]?.signal.aborted).toBe(true);
   });
 });
