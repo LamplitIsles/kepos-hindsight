@@ -108,6 +108,12 @@
   font-size: 12px;
   line-height: 1.5;
 }
+.readOnly {
+  margin: 12px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .footer {
   display: flex;
   align-items: center;
@@ -138,9 +144,18 @@
   background: transparent;
   color: var(--dsw-alias-label-secondary);
 }
+.discard:hover:not(:disabled) {
+  border-color: var(--dsw-alias-label-dimmed);
+  color: var(--dsw-alias-label-primary);
+}
 .save {
   background: var(--dsw-alias-label-primary);
   color: var(--dsw-alias-bg-layer-3);
+}
+.discard:focus-visible,
+.save:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
 }
 .discard:disabled,
 .save:disabled {
