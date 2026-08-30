@@ -1,6 +1,9 @@
-import { createElement, useEffect, useState } from "react";
-import type { FormEvent } from "react";
-import type { ClientContext, SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import { createElement, useEffect, useId, useState } from "react";
+import { IconChevronDownOutline14 } from "@deepseek-ai/dsh-client-ui-primitives";
+import type {
+  ClientContext,
+  SettingsScope,
+} from "@deepseek-ai/dsh-client-runtime/client";
 import type {} from "@deepseek-ai/dsh-api-remotes/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
@@ -9,51 +12,27 @@ import type {} from "@deepseek-ai/dsh-client-ui-slots";
 import {
   DEFAULT_BANK_ID,
   normalizeCompanionSettings,
-  SETTINGS_NAMESPACE
+  SETTINGS_NAMESPACE,
 } from "./settings.js";
 import type { CompanionSettings } from "./settings.js";
-import styleText from "./HindsightSettings.module.css";
+import styles from "./HindsightSettings.module.dshcss";
 
 export const inject = ["settingsScope", "slots"] as const;
 
 type ClientSettingsScope = SettingsScope<Partial<CompanionSettings>>;
 
-const css = {
-  card: "kepos-hindsight-card",
-  eyebrow: "kepos-hindsight-eyebrow",
-  title: "kepos-hindsight-title",
-  copy: "kepos-hindsight-copy",
-  form: "kepos-hindsight-form",
-  label: "kepos-hindsight-label",
-  input: "kepos-hindsight-input",
-  actions: "kepos-hindsight-actions",
-  button: "kepos-hindsight-button",
-  hint: "kepos-hindsight-hint",
-  feedback: "kepos-hindsight-feedback"
-} as const;
-
-/** Install the client-bundled, plugin-scoped stylesheet for this fiber only. */
-function installStyles(): () => void {
-  if (typeof document === "undefined") return () => undefined;
-  const style = document.createElement("style");
-  style.dataset.dshPlugin = SETTINGS_NAMESPACE;
-  style.textContent = styleText;
-  document.head.append(style);
-  return () => style.remove();
-}
-
 /** Read only the explicit, non-secret companion settings from a client snapshot. */
 export function decodeSettings(value: unknown): Partial<CompanionSettings> {
   const settings = normalizeCompanionSettings(value);
   return {
-    bankId: settings.bankId
+    bankId: settings.bankId,
   };
 }
 
 export async function saveSetting(
   scope: Pick<ClientSettingsScope, "set">,
   field: keyof CompanionSettings,
-  value: CompanionSettings[keyof CompanionSettings]
+  value: CompanionSettings[keyof CompanionSettings],
 ): Promise<void> {
   await scope.set(field, value as never);
 }
@@ -61,20 +40,25 @@ export async function saveSetting(
 function SettingsCard({ scope }: { scope: ClientSettingsScope }) {
   const [snapshot, setSnapshot] = useState(scope.getSnapshot());
   const [draft, setDraft] = useState(DEFAULT_BANK_ID);
-  const [status, setStatus] = useState<"saved" | "error">();
+  const [status, setStatus] = useState<"error">();
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState(false);
+  const cardId = useId();
   const settings = normalizeCompanionSettings(snapshot.value);
+  const dirty = draft.trim() !== settings.bankId;
 
-  useEffect(() => scope.subscribe(() => setSnapshot(scope.getSnapshot())), [scope]);
+  useEffect(
+    () => scope.subscribe(() => setSnapshot(scope.getSnapshot())),
+    [scope],
+  );
   useEffect(() => setDraft(settings.bankId), [settings.bankId]);
 
-  const saveBank = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const saveBank = async () => {
     setStatus(undefined);
     setSaving(true);
     try {
       await saveSetting(scope, "bankId", draft.trim() || DEFAULT_BANK_ID);
-      setStatus("saved");
+      setStatus(undefined);
     } catch {
       setStatus("error");
     } finally {
@@ -83,61 +67,117 @@ function SettingsCard({ scope }: { scope: ClientSettingsScope }) {
   };
 
   return createElement(
-    "section",
-    { className: css.card, "aria-labelledby": "kepos-hindsight-settings-title" },
-    createElement("p", { className: css.eyebrow }, "COMPANION MEMORY"),
-    createElement("h2", { className: css.title, id: "kepos-hindsight-settings-title" }, "Hindsight memory"),
+    "li",
+    {
+      className: `${styles.card} ${open ? styles.open : ""}`,
+      "data-settings-card": SETTINGS_NAMESPACE,
+    },
     createElement(
-      "p",
-      { className: css.copy },
-      "One fixed bank for every direct DSH session. Raw recall and session-document retain always use it; preset and workspace never reroute it."
-    ),
-    createElement(
-      "form",
-      { className: css.form, onSubmit: saveBank },
+      "button",
+      {
+        type: "button",
+        className: styles.header,
+        "aria-expanded": open,
+        "aria-controls": `${cardId}-body`,
+        onClick: () => setOpen((value) => !value),
+      },
       createElement(
-        "label",
-        { className: css.label, htmlFor: "kepos-hindsight-bank" },
-        "Memory bank",
-        createElement("input", {
-          className: css.input,
-          id: "kepos-hindsight-bank",
-          value: draft,
-          disabled: saving,
-          onChange: (event: { target: { value: string } }) => setDraft(event.target.value),
-          "aria-describedby": "kepos-hindsight-bank-hint"
-        })
+        "span",
+        { className: styles.headText },
+        createElement("span", { className: styles.name }, "Hindsight memory"),
+        createElement(
+          "span",
+          { className: styles.description },
+          "Companion memory bank used for direct sessions.",
+        ),
       ),
-      createElement(
-        "div",
-        { className: css.actions },
-        createElement("button", { className: css.button, type: "submit", disabled: saving }, saving ? "Saving…" : "Save bank"),
-        createElement("small", { className: css.hint, id: "kepos-hindsight-bank-hint" }, "Default: yuki-memory")
-      )
+      dirty
+        ? createElement("span", { className: styles.pending }, "Unsaved")
+        : null,
+      createElement(IconChevronDownOutline14, {
+        className: `${styles.chevron} ${open ? styles.chevronOpen : ""}`,
+      }),
     ),
-    status === "saved"
-      ? createElement("p", { className: css.feedback, "data-state": "success", role: "status" }, "Saved — applies to the next turn.")
+    open
+      ? createElement(
+          "div",
+          { className: styles.body, id: `${cardId}-body` },
+          createElement(
+            "div",
+            { className: styles.field },
+            createElement(
+              "label",
+              { className: styles.label, htmlFor: `${cardId}-bank` },
+              "Memory bank",
+            ),
+            createElement("input", {
+              className: styles.control,
+              id: `${cardId}-bank`,
+              value: draft,
+              disabled: saving || !snapshot.writable,
+              onChange: (event: { target: { value: string } }) => {
+                setDraft(event.target.value);
+                setStatus(undefined);
+              },
+            }),
+            createElement(
+              "p",
+              { className: styles.hint },
+              "One fixed bank for recall and retention. Default: yuki-memory.",
+            ),
+          ),
+          createElement(
+            "div",
+            { className: styles.footer },
+            status === "error"
+              ? createElement(
+                  "p",
+                  { className: styles.error, role: "alert" },
+                  "This setting could not be saved from this connection.",
+                )
+              : null,
+            createElement(
+              "button",
+              {
+                className: styles.discard,
+                type: "button",
+                disabled: !dirty || saving,
+                onClick: () => {
+                  setDraft(settings.bankId);
+                  setStatus(undefined);
+                },
+              },
+              "Discard",
+            ),
+            createElement(
+              "button",
+              {
+                className: styles.save,
+                type: "button",
+                disabled: !dirty || saving || !snapshot.writable,
+                onClick: () => void saveBank(),
+              },
+              saving ? "Saving…" : "Save",
+            ),
+          ),
+        )
       : null,
-    status === "error"
-      ? createElement("p", { className: css.feedback, "data-state": "error", role: "alert" }, "This setting could not be saved from this connection.")
-      : null
   );
 }
 
 export function apply(ctx: ClientContext): void {
-  ctx.effect(() => installStyles(), "kepos-hindsight: settings styles");
   const scope = ctx.settingsScope.bind<Partial<CompanionSettings>>({
     namespace: SETTINGS_NAMESPACE,
-    decode: decodeSettings
+    decode: decodeSettings,
   });
   ctx.slots.inject("settings.plugin.item", () =>
     ctx.slots.register(
       {
         name: "settings.plugin.item",
         key: SETTINGS_NAMESPACE,
-        inject: () => ({})
+        inject: () => ({}),
       } as never,
-      (() => createElement(SettingsCard, { scope })) as never
-    )
+      (() => createElement(SettingsCard, { scope })) as never,
+    ),
   );
 }
