@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  apply,
   decodeSettings,
   saveSetting,
   syncBankIdDraft
@@ -46,5 +47,33 @@ describe("companion bank settings", () => {
       value: "remote-bank",
       saved: "remote-bank"
     });
+  });
+
+  it("binds the alpha settings scope and registers the native settings slot", () => {
+    const scope = {};
+    let bound: { namespace?: string; decode?: (value: unknown) => unknown } | undefined;
+    let injectedSlot: string | undefined;
+    let registration: { key?: string; name?: string } | undefined;
+    apply({
+      settingsScope: {
+        bind(spec: typeof bound) {
+          bound = spec;
+          return scope;
+        }
+      },
+      slots: {
+        inject(name: string, factory: () => unknown) {
+          injectedSlot = name;
+          factory();
+        },
+        register(entry: { key?: string; name?: string }) {
+          registration = entry;
+        }
+      }
+    } as never);
+    expect(bound?.namespace).toBe(SETTINGS_NAMESPACE);
+    expect(bound?.decode?.({ bankId: "alpha-bank" })).toEqual({ bankId: "alpha-bank" });
+    expect(injectedSlot).toBe("settings.plugin.item");
+    expect(registration).toMatchObject({ name: "settings.plugin.item", key: SETTINGS_NAMESPACE });
   });
 });

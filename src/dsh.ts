@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { settingsNamespace } from "@deepseek-ai/dsh-settings";
 import z from "@deepseek-ai/schemastery";
 import type {} from "@deepseek-ai/dsh-system-prompt";
 
@@ -49,7 +48,7 @@ type ToolExecution = { signal: AbortSignal };
 type RuntimeResolver = () => ResolvedCompanionConfig;
 type HostContext = {
   settings: {
-    register: (namespace: unknown, schema: unknown, options: unknown) => { get: () => unknown };
+    register: (namespace: string, schema: unknown, options?: unknown) => { get: () => unknown };
   };
   on: (event: string, listener: unknown, options?: unknown) => void;
   inject: (services: string[], callback: (context: ModelSurfaceContext) => void) => void;
@@ -228,7 +227,7 @@ function registerModelSurface(context: ModelSurfaceContext, runtime: RuntimeReso
 
 export function apply(ctx: HostContext, pluginConfig: DshPluginConfig = {}): void {
   const settings = ctx.settings.register(
-    settingsNamespace(SETTINGS_NAMESPACE),
+    SETTINGS_NAMESPACE,
     CompanionSettingsSchema,
     { base: DEFAULT_COMPANION_SETTINGS, applies: "live" }
   );
