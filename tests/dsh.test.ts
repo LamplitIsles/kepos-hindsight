@@ -329,9 +329,10 @@ describe("DSH hooks", () => {
       execute: (args: { query: string }, execution: { signal: AbortSignal }) => Promise<string>;
     }> = [];
     const on = vi.fn();
+    const registerSettings = vi.fn((_namespace: unknown, _schema: unknown, _options?: unknown) => ({ get: () => ({ bankId: "yuki" }) }));
 
     apply({
-      settings: { register: () => ({ get: () => ({ bankId: "yuki" }) }) },
+      settings: { register: registerSettings },
       on,
       inject: (_services, callback) => callback({
         systemPrompt: { section: () => undefined },
@@ -339,6 +340,7 @@ describe("DSH hooks", () => {
       })
     }, { configPath });
 
+    expect(registerSettings.mock.calls[0]?.[0]).toBe("kepos-hindsight");
     const reflect = tools.find((tool) => tool.name === "hindsight_reflect");
     expect(tools.map((tool) => tool.name)).toEqual(["hindsight_reflect"]);
     expect(reflect?.timeoutMs).toBe(330_000);
