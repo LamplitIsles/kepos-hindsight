@@ -76,17 +76,15 @@ pnpm build
 dsh plugin --profile web add file:/absolute/path/to/kepos-hindsight
 ```
 
-The bundle disables the official DSH row named `hindsight`, then mounts
-`kepos-hindsight`. It does not alter the official Codex integration. Confirm
-the composition before starting DSH:
+The bundle mounts `kepos-hindsight`. It does not alter the official Codex
+integration. Confirm the composition before starting DSH:
 
 ```bash
 dsh --profile web --dump-config
 ```
 
-The output should include a disabled `hindsight` row and an enabled
-`kepos-hindsight` row. A running DSH host must be restarted after changing its
-bundle list.
+The output should include an enabled `kepos-hindsight` row. A running DSH host
+must be restarted after changing its bundle list.
 
 ## Configuration
 
