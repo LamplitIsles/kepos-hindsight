@@ -2,6 +2,11 @@
 
 Source-level audit for the companion-memory deployment, 2026-08-29.
 
+> Route update (2026-09-03): the deployed `/hindsight/responses` evidence below
+> records the adapter tested during this audit. Its replacement is
+> `/codex/buffered/responses`, reached by configuring Hindsight's OpenAI SDK
+> base URL as `/codex/buffered`.
+
 ## Verdict
 
 The deployed `openai-responses` → `/hindsight/responses` path has **no hard
@@ -378,7 +383,7 @@ companion-memory work can finish without paying for repeated attempts.
 
 ## Recommendation
 
-Keep `openai-responses` with the deployed `/hindsight/responses` adapter. It is
+Keep `openai-responses` with the buffered `/codex/buffered/responses` adapter. It is
 the better Hindsight-side provider for companion memory because it preserves
 tool-call history correctly, uses the SDK's typed JSON response, reports real
 usage, retries tool calls, and supports the default JSON mode. Do not switch

@@ -87,11 +87,12 @@ function toMemory(value: unknown): RecalledMemory | undefined {
   if (!isRecord(value)) return undefined;
   const text = typeof value.text === "string" ? value.text.trim() : "";
   if (!text) return undefined;
+  const scores = isRecord(value.scores) ? value.scores : undefined;
   return {
     ...value,
     text,
     ...(typeof value.id === "string" ? { id: value.id } : {}),
     ...(typeof value.type === "string" ? { type: value.type } : {}),
-    ...(typeof value.score === "number" ? { score: value.score } : {})
+    ...(typeof scores?.final === "number" ? { score: scores.final } : {})
   };
 }

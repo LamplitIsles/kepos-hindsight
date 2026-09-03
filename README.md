@@ -115,7 +115,7 @@ coding-agent adapter ignores this extension.
           "maxTokens": 900,
           "types": ["observation", "world", "experience"],
           "preferObservations": true,
-          "topK": 6,
+          "topK": 3,
           "contextTurns": 2,
           "maxQueryChars": 800,
           "timeoutMs": 4000

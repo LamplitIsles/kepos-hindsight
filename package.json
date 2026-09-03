@@ -51,6 +51,7 @@
     "build": "tsup",
     "check": "tsc --noEmit",
     "pack-smoke": "node scripts/pack-smoke.mjs",
+    "recall:eval": "node scripts/recall-eval.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

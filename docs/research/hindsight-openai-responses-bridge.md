@@ -2,8 +2,7 @@
 
 ## Planned architecture
 
-Hindsight 0.9.2 adds an `openai-responses` LLM provider. After upgrading from
-the current 0.8.6 deployment, point that provider at
+Hindsight 0.9.2 includes an `openai-responses` LLM provider. Point that provider at
 [`kepos-codex-bridge`](https://github.com/lamplitisles/kepos-codex-bridge).
 This repository already depends on the 0.9.2 TypeScript client; the remaining
 change described here is the Hindsight **server** runtime and its provider
@@ -29,13 +28,13 @@ selection:
 
 ```text
 HINDSIGHT_API_LLM_PROVIDER=openai-responses
-HINDSIGHT_API_LLM_BASE_URL=http://codex-bridge.localhost:17480/codex
+HINDSIGHT_API_LLM_BASE_URL=http://codex-bridge.localhost:17480/codex/buffered
 HINDSIGHT_API_LLM_API_KEY=<non-empty bridge capability or placeholder>
 HINDSIGHT_API_LLM_MODEL=<model accepted by the managed Codex account>
 ```
 
-The OpenAI SDK appends `/responses`, producing the bridge endpoint
-`/codex/responses`. The bridge forwards the request's model field, so the cold
+The OpenAI SDK appends `/responses`, producing the buffered bridge endpoint
+`/codex/buffered/responses`. The bridge forwards the request's model field, so the cold
 seed/backfill target can be Luna when the managed account accepts its actual
 model identifier.
 
@@ -57,7 +56,7 @@ performed by the Hindsight server's configured providers.
 
 1. Upgrade Hindsight to 0.9.2 without changing the companion bank ID or prompt
    source of truth.
-2. Confirm `/codex/responses` with one small non-retain request through the
+2. Confirm `/codex/buffered/responses` with one small non-retain request through the
    bridge.
 3. Configure the Hindsight server provider/base URL/key/model.
 4. Run one tiny test-bank retain and verify extraction, usage accounting, and
@@ -66,5 +65,4 @@ performed by the Hindsight server's configured providers.
    does not prove every background model call works.
 6. Only then enable a coding-agent cold seed or historical backfill.
 
-This document records the intended route; it does not claim that the live
-Hindsight server has already been upgraded or switched.
+The bridge route must be deployed before switching Hindsight to this base URL.
