@@ -14,6 +14,14 @@ async function configFile(config: unknown): Promise<string> {
 }
 
 describe("resolveCompanionConfig", () => {
+  it("uses the focused automatic-recall defaults", () => {
+    expect(resolveCompanionConfig({ configPath: "/missing/config.json" }).recall).toMatchObject({
+      maxTokens: 900,
+      preferObservations: true,
+      topK: 3
+    });
+  });
+
   it("uses the explicit companion bank and leaves missions untouched", async () => {
     const path = await configFile({
       apiUrl: "http://memory.test/",

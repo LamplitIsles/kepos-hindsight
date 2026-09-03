@@ -18,7 +18,8 @@ describe("HindsightClient", () => {
       requests.push(request);
       if (request.url.endsWith("/memories/recall")) {
         return hindsightJson({ results: [
-          { id: "fact-1", text: "Neil prefers short Chinese replies.", type: "observation", score: 0.8 },
+          { id: "fact-low", text: "Neil prefers short replies.", type: "observation", scores: { final: 0.2 } },
+          { id: "fact-1", text: "Neil prefers short Chinese replies.", type: "observation", scores: { final: 0.8 } },
           { id: "empty", text: "" }
         ] });
       }
@@ -28,7 +29,20 @@ describe("HindsightClient", () => {
     const client = new HindsightClient("http://memory.test", "yuki bank", "token");
 
     await expect(client.recall("reply style", DEFAULT_RECALL)).resolves.toEqual([
-      { id: "fact-1", text: "Neil prefers short Chinese replies.", type: "observation", score: 0.8 }
+      {
+        id: "fact-1",
+        text: "Neil prefers short Chinese replies.",
+        type: "observation",
+        scores: { final: 0.8 },
+        score: 0.8
+      },
+      {
+        id: "fact-low",
+        text: "Neil prefers short replies.",
+        type: "observation",
+        scores: { final: 0.2 },
+        score: 0.2
+      }
     ]);
     await client.retain("session-1", 2, [{ role: "user", content: "记住我喜欢短句" }], "replace");
     await client.retain("session-1", 3, [{ role: "user", content: "也记住这一句" }], "append");
