@@ -86,6 +86,12 @@ dsh --profile web --dump-config
 The output should include an enabled `kepos-hindsight` row. A running DSH host
 must be restarted after changing its bundle list.
 
+For a published release, install the public package directly:
+
+```bash
+dsh plugin --profile web add @lamplitisles/kepos-hindsight
+```
+
 ## Configuration
 
 Endpoint, credentials, per-bank missions, and the global `disabled` flag stay
@@ -151,6 +157,92 @@ pnpm build
 
 The tests use fake Hindsight HTTP responses and test-owned temporary config
 directories; they never read or modify a live bank.
+
+## Maintainer releases
+
+The release workflow publishes `@lamplitisles/kepos-hindsight` only for a
+semantic-version tag matching `v<semver>`. It verifies a frozen pnpm install,
+typecheck, tests, build, release preflight, and the packed DSH artifact before
+the publish job can run.
+
+### First-time npm and GitHub setup
+
+Before the first trusted release, a maintainer must:
+
+1. Create or claim the `@lamplitisles` npm scope. Temporarily set the package
+   version to the distinct bootstrap prerelease `0.1.0-beta.0` (do not create
+   a Git release tag), then run the matching preflight and checks:
+
+   ```bash
+   pnpm check
+   pnpm test
+   pnpm build
+   GITHUB_REF_NAME=v0.1.0-beta.0 pnpm release:check
+   pnpm pack-smoke
+   ```
+
+   While authenticated interactively on the maintainer machine, publish that
+   bootstrap version to npm's beta channel:
+
+   ```bash
+   npm publish --access public --tag beta
+   ```
+
+   This leaves `0.1.0` available for the first stable OIDC release.
+2. In npm package settings, add a Trusted Publisher for the `LamplitIsles`
+   GitHub owner, repository `kepos-hindsight`, workflow
+   `.github/workflows/release.yml`, and environment `npm`.
+3. Create the protected GitHub `npm` environment and apply the repository's
+   release approval policy (for example, required reviewers and the allowed
+   release tags).
+4. Change the package version back to `0.1.0`, run the matching local
+   preflight, and create the first stable release through the authorized forge
+   command:
+
+   ```bash
+   GITHUB_REF_NAME=v0.1.0 pnpm release:check
+   og tag v0.1.0
+   ```
+
+   The tag starts the OIDC-backed workflow, which publishes `0.1.0` to npm's
+   `latest` channel. Do not use a direct Git tag or push command.
+
+Trusted Publishing uses GitHub's OIDC identity and npm provenance. Do not add
+an npm authentication token or any other npm credential to this repository or
+its GitHub secrets.
+
+### Routine release
+
+Create and publish a tag after the change is ready with the repository-authorized
+forge command:
+
+```bash
+og tag v0.1.0
+```
+
+Use a prerelease such as `v0.1.1-beta.1` for beta testing. Stable tags publish
+to npm's `latest` dist-tag; tags containing a prerelease identifier publish to
+`beta`. CI synchronizes the package version to the tag in its disposable
+verification workspace, then publishes only the verified artifact.
+
+To run the release preflight locally without publishing, use a matching tag
+name (the package version in the checkout must match it):
+
+```bash
+GITHUB_REF_NAME=v0.1.0 pnpm release:check
+```
+
+The preflight rejects malformed or mismatched tags, non-public npm metadata,
+and packed artifacts that omit the DSH entry points or include unsafe build
+output. The full local verification remains:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
+pnpm build
+pnpm pack-smoke
+```
 
 ## Design and operating notes
 

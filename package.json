@@ -2,6 +2,11 @@
   "name": "@lamplitisles/kepos-hindsight",
   "version": "0.1.0",
   "description": "A small DSH companion-memory adapter for Hindsight",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LamplitIsles/kepos-hindsight.git"
+  },
   "type": "module",
   "main": "./dist/dsh.js",
   "types": "./dist/dsh.d.ts",
@@ -27,8 +32,17 @@
   },
   "files": [
     "dist",
-    "cordis.patch.yml"
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -52,6 +66,8 @@
     "check": "tsc --noEmit",
     "pack-smoke": "node scripts/pack-smoke.mjs",
     "recall:eval": "node scripts/recall-eval.mjs",
+    "release:check": "tsx scripts/release-check.ts",
+    "release:sync-version": "tsx scripts/sync-release-version.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -74,6 +90,7 @@
     "lightningcss": "^1.33.0",
     "react": "^18.3.1",
     "tsup": "^8.5.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "vitest": "^4.0.15"
   },
