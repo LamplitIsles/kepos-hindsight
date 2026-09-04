@@ -33,7 +33,7 @@ type AgentLike = {
       id: string;
       origin?: string;
     };
-    events?: unknown[];
+    snapshotEvents: () => readonly unknown[];
   };
 };
 
@@ -137,7 +137,7 @@ export function createDshHooks(
       const config = runtime();
       if (!config.enabled) return decision;
       try {
-        const history = recentUserText(payload.agent.session.events as never[] | undefined, config.recall.contextTurns);
+        const history = recentUserText(payload.agent.session.snapshotEvents() as readonly never[], config.recall.contextTurns);
         // DSH normally records the direct message after pre-step, but resumed
         // or test adapters can already expose it. Avoid querying that message twice.
         const prior = history.at(-1) === prompt ? history.slice(0, -1) : history;
@@ -165,8 +165,8 @@ export function createDshHooks(
         const target = retainTarget(config);
         const updateMode = retainedSessionTargets.get(sessionId) === target ? "append" : "replace";
         const transcript = updateMode === "replace"
-          ? transcriptThroughTurn(payload.agent.session.events as never[] | undefined, payload.turn)
-          : transcriptForTurn(payload.agent.session.events as never[] | undefined, payload.turn);
+          ? transcriptThroughTurn(payload.agent.session.snapshotEvents() as readonly never[], payload.turn)
+          : transcriptForTurn(payload.agent.session.snapshotEvents() as readonly never[], payload.turn);
         try {
           // The Hindsight operation remains asynchronous. Await only the small
           // HTTP acknowledgement so DSH does not finish this turn before the

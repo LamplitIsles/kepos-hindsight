@@ -34,18 +34,19 @@ describe("DSH hooks", () => {
       return hindsightJson({ operation_id: "queued" });
     });
     globalThis.fetch = fetch;
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "昨天聊的事情" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我记得。" }] } } },
+      { type: "turn/start", data: { turn: 2 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "今天也想短一点。" }] } },
+      { type: "user/message", data: { source: { kind: "plugin", plugin: "kepos-hindsight" }, content: [{ type: "text", text: "do not retain me" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "好。" }] } } }
+    ];
     const agent = {
       session: {
         header: { id: "session-1", cwd: "/work/yuki", agentPreset: "yuki" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "昨天聊的事情" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我记得。" }] } } },
-          { type: "turn/start", data: { turn: 2 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "今天也想短一点。" }] } },
-          { type: "user/message", data: { source: { kind: "plugin", plugin: "kepos-hindsight" }, content: [{ type: "text", text: "do not retain me" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "好。" }] } } }
-        ]
+        snapshotEvents: () => events
       }
     };
     const hooks = createDshHooks({ configPath });
@@ -67,7 +68,7 @@ describe("DSH hooks", () => {
     expect(retained.items[0].content).toContain("今天也想短一点。");
     expect(retained.items[0].content).not.toContain("do not retain me");
 
-    agent.session.events.push(
+    events.push(
       { type: "turn/start", data: { turn: 3 } },
       { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "这是后来的一句。" }] } },
       { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我收到啦。" }] } } }
@@ -84,7 +85,7 @@ describe("DSH hooks", () => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
-    const agent = { session: { header: { id: "session-2", origin: "subagent" }, events: [] } };
+    const agent = { session: { header: { id: "session-2", origin: "subagent" }, snapshotEvents: () => [] } };
 
     const decision = await hooks.preStep({ agent, turn: 1, signal: new AbortController().signal }, async () => ({
       kind: "enter",
@@ -98,7 +99,7 @@ describe("DSH hooks", () => {
   it("does not inject the Hindsight context when companion memory is disabled", async () => {
     const configPath = await configFile({ disabled: true });
     const hooks = createDshHooks({ configPath });
-    const agent = { session: { header: { id: "session-time" }, events: [] } };
+    const agent = { session: { header: { id: "session-time" }, snapshotEvents: () => [] } };
 
     const decision = await hooks.preStep({ agent, turn: 1, signal: new AbortController().signal }, async () => ({
       kind: "enter" as const,
@@ -115,15 +116,16 @@ describe("DSH hooks", () => {
     }));
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "请记住我的回复偏好" }] } },
+      { type: "turn/start", data: { turn: 2 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "还是按那个偏好回复" }] } }
+    ];
     const agent = {
       session: {
         header: { id: "consecutive-recall-session" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "请记住我的回复偏好" }] } },
-          { type: "turn/start", data: { turn: 2 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "还是按那个偏好回复" }] } }
-        ]
+        snapshotEvents: () => events
       }
     };
 
@@ -149,14 +151,15 @@ describe("DSH hooks", () => {
     }));
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "请记住这件事" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我会记住。" }] } } }
+    ];
     const agent = {
       session: {
         header: { id: "session-acknowledgement" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "请记住这件事" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "我会记住。" }] } } }
-        ]
+        snapshotEvents: () => events
       }
     };
 
@@ -179,17 +182,18 @@ describe("DSH hooks", () => {
     });
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第一句" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第一句回复" }] } } },
+      { type: "turn/start", data: { turn: 2 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第二句" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第二句回复" }] } } }
+    ];
     const agent = {
       session: {
         header: { id: "serialized-session" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第一句" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第一句回复" }] } } },
-          { type: "turn/start", data: { turn: 2 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第二句" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第二句回复" }] } } }
-        ]
+        snapshotEvents: () => events
       }
     };
 
@@ -217,23 +221,24 @@ describe("DSH hooks", () => {
     globalThis.fetch = fetch;
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const hooks = createDshHooks({ configPath });
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第一句" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第一句回复" }] } } },
+      { type: "turn/start", data: { turn: 2 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "失败但必须保留的第二句" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第二句回复" }] } } },
+      { type: "turn/start", data: { turn: 3 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "触发修复的第三句" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第三句回复" }] } } },
+      { type: "turn/start", data: { turn: 4 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "修复后的第四句" }] } },
+      { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第四句回复" }] } } }
+    ];
     const agent = {
       session: {
         header: { id: "retain-recovery-session" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "第一句" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第一句回复" }] } } },
-          { type: "turn/start", data: { turn: 2 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "失败但必须保留的第二句" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第二句回复" }] } } },
-          { type: "turn/start", data: { turn: 3 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "触发修复的第三句" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第三句回复" }] } } },
-          { type: "turn/start", data: { turn: 4 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "修复后的第四句" }] } },
-          { type: "assistant/message", data: { message: { content: [{ type: "text", text: "第四句回复" }] } } }
-        ]
+        snapshotEvents: () => events
       }
     };
 
@@ -262,15 +267,16 @@ describe("DSH hooks", () => {
     });
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath }, () => ({ bankId }));
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "旧 bank 的内容" }] } },
+      { type: "turn/start", data: { turn: 2 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "新 bank 也应有完整历史" }] } }
+    ];
     const agent = {
       session: {
         header: { id: "bank-switch-session" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "旧 bank 的内容" }] } },
-          { type: "turn/start", data: { turn: 2 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "新 bank 也应有完整历史" }] } }
-        ]
+        snapshotEvents: () => events
       }
     };
 
@@ -292,13 +298,14 @@ describe("DSH hooks", () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => hindsightJson({ operation_id: "queued" }));
     globalThis.fetch = fetch;
     const hooks = createDshHooks({ configPath });
+    const events: unknown[] = [
+      { type: "turn/start", data: { turn: 1 } },
+      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "记住这句" }] } }
+    ];
     const agent = {
       session: {
         header: { id: "disposed-session", agentPreset: "yuki" },
-        events: [
-          { type: "turn/start", data: { turn: 1 } },
-          { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "记住这句" }] } }
-        ]
+        snapshotEvents: () => events
       }
     };
 
