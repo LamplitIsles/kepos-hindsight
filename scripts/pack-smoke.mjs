@@ -15,7 +15,7 @@ import vm from "node:vm";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PACKAGE_NAME = "@lamplitisles/kepos-hindsight";
 const PACKAGE_VERSION = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
-const ALPHA_VERSION = "0.1.2-alpha.3";
+const ALPHA_VERSION = "0.1.2-alpha.5";
 
 if (!existsSync(join(root, "dist", "dsh.js")) || !existsSync(join(root, "dist", "client.js"))) {
   throw new Error("pack-smoke requires a fresh `pnpm build`");
@@ -63,7 +63,7 @@ function dshEntry(env) {
     );
     entry = output.trim().split(/\r?\n/).at(-1);
   }
-  if (!entry || !existsSync(entry)) throw new Error("pack-smoke requires an alpha.3 `dsh` CLI (set DSH_CLI to its path)");
+  if (!entry || !existsSync(entry)) throw new Error("pack-smoke requires an alpha.5 `dsh` CLI (set DSH_CLI to its path)");
   entry = realpathSync(entry);
   const version = execFileSync(process.execPath, ["--expose-internals", entry, "--version"], { cwd: root, encoding: "utf8", env }).trim();
   if (version !== ALPHA_VERSION) throw new Error(`pack-smoke requires dsh ${ALPHA_VERSION}, got ${version}`);
@@ -255,7 +255,7 @@ try {
     throw new Error(`installed Host Settings registration did not activate: ${JSON.stringify(settings.value)}`);
   }
 
-  console.log(`pack-smoke: installed ${PACKAGE_NAME}; alpha.3 Host Settings, Web bootstrap, and client Loader verified`);
+  console.log(`pack-smoke: installed ${PACKAGE_NAME}; alpha.5 Host Settings, Web bootstrap, and client Loader verified`);
 } finally {
   if (runtime) await stopRuntime(runtime.child);
   rmSync(temp, { recursive: true, force: true });
