@@ -18,10 +18,15 @@ export const PUBLIC_PACKAGE = {
   ],
 } as const;
 
-export const PUBLIC_PACKAGES = [PUBLIC_PACKAGE] as const;
-
-const tagPattern =
-  /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
+const numericIdentifier = "(?:0|[1-9]\\d*)";
+const nonNumericIdentifier = "(?:\\d*[A-Za-z-][0-9A-Za-z-]*)";
+const preReleaseIdentifier = `(?:${numericIdentifier}|${nonNumericIdentifier})`;
+const buildIdentifier = "(?:[0-9A-Za-z-]+)";
+const tagPattern = new RegExp(
+  `^v${numericIdentifier}\\.${numericIdentifier}\\.${numericIdentifier}` +
+    `(?:-${preReleaseIdentifier}(?:\\.${preReleaseIdentifier})*)?` +
+    `(?:\\+${buildIdentifier}(?:\\.${buildIdentifier})*)?$`,
+);
 
 export function versionFromTag(tag: string): string {
   if (!tagPattern.test(tag)) {

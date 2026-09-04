@@ -70,6 +70,16 @@ describe("release invariants", () => {
     expect(() => versionFromTag("release-0.1.0")).toThrow("v<semver>");
   });
 
+  it("enforces strict prerelease identifiers and accepts build metadata", () => {
+    expect(() => versionFromTag("v1.2.3-01")).toThrow("v<semver>");
+    expect(() => versionFromTag("v1.2.3-beta.01")).toThrow("v<semver>");
+    expect(versionFromTag("v1.2.3+build.1")).toBe("1.2.3+build.1");
+    expect(versionFromTag("v1.2.3-beta.1+build.1")).toBe(
+      "1.2.3-beta.1+build.1",
+    );
+    expect(npmDistTag("v1.2.3+build.1")).toBe("latest");
+  });
+
   it("rejects a package version that does not match the release tag", async () => {
     const root = await fixture("0.1.1");
 

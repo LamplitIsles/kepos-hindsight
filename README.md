@@ -184,11 +184,11 @@ its GitHub secrets.
 
 ### Routine release
 
-Create and push a tag after the change is ready:
+Create and publish a tag after the change is ready with the repository-authorized
+forge command:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+og tag v0.1.0
 ```
 
 Use a prerelease such as `v0.1.1-beta.1` for beta testing. Stable tags publish
