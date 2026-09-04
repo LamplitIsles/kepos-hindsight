@@ -198,12 +198,11 @@ Before the first trusted release, a maintainer must:
 3. Create the protected GitHub `npm` environment and apply the repository's
    release approval policy (for example, required reviewers and the allowed
    release tags).
-4. Change the package version back to `0.1.0`, run the matching local
-   preflight, and create the first stable release through the authorized forge
-   command:
+4. Create the first stable release through the authorized forge command. CI
+   synchronizes its disposable package manifest from the tag before preflight
+   and publication:
 
    ```bash
-   GITHUB_REF_NAME=v0.1.0 pnpm release:check
    og tag v0.1.0
    ```
 
@@ -228,10 +227,12 @@ to npm's `latest` dist-tag; tags containing a prerelease identifier publish to
 `beta`. CI synchronizes the package version to the tag in its disposable
 verification workspace, then publishes only the verified artifact.
 
-To run the release preflight locally without publishing, use a matching tag
-name (the package version in the checkout must match it):
+To reproduce the release preflight locally without publishing, use a disposable
+working tree, synchronize its package manifest from the tag, then run the
+check:
 
 ```bash
+GITHUB_REF_NAME=v0.1.0 pnpm release:sync-version
 GITHUB_REF_NAME=v0.1.0 pnpm release:check
 ```
 
