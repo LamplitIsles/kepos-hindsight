@@ -169,14 +169,43 @@ the publish job can run.
 
 Before the first trusted release, a maintainer must:
 
-1. Create or claim the `@lamplitisles` npm scope and manually publish the
-   initial beta package with `npm publish --access public --tag beta`.
+1. Create or claim the `@lamplitisles` npm scope. Temporarily set the package
+   version to the distinct bootstrap prerelease `0.1.0-beta.0` (do not create
+   a Git release tag), then run the matching preflight and checks:
+
+   ```bash
+   pnpm check
+   pnpm test
+   pnpm build
+   GITHUB_REF_NAME=v0.1.0-beta.0 pnpm release:check
+   pnpm pack-smoke
+   ```
+
+   While authenticated interactively on the maintainer machine, publish that
+   bootstrap version to npm's beta channel:
+
+   ```bash
+   npm publish --access public --tag beta
+   ```
+
+   This leaves `0.1.0` available for the first stable OIDC release.
 2. In npm package settings, add a Trusted Publisher for the `LamplitIsles`
    GitHub owner, repository `kepos-hindsight`, workflow
    `.github/workflows/release.yml`, and environment `npm`.
 3. Create the protected GitHub `npm` environment and apply the repository's
    release approval policy (for example, required reviewers and the allowed
    release tags).
+4. Change the package version back to `0.1.0`, run the matching local
+   preflight, and create the first stable release through the authorized forge
+   command:
+
+   ```bash
+   GITHUB_REF_NAME=v0.1.0 pnpm release:check
+   og tag v0.1.0
+   ```
+
+   The tag starts the OIDC-backed workflow, which publishes `0.1.0` to npm's
+   `latest` channel. Do not use a direct Git tag or push command.
 
 Trusted Publishing uses GitHub's OIDC identity and npm provenance. Do not add
 an npm authentication token or any other npm credential to this repository or
