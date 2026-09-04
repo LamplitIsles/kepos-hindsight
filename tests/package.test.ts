@@ -29,7 +29,7 @@ describe("DSH bundle manifest", () => {
     ]);
   });
 
-  it("publishes one alpha.3 DSH contract family without the retired client Runtime", async () => {
+  it("publishes one rc.1 DSH contract family without the retired client Runtime", async () => {
     const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")) as {
       devDependencies: Record<string, string>;
       peerDependencies: Record<string, string>;
@@ -37,7 +37,7 @@ describe("DSH bundle manifest", () => {
     for (const dependencies of [manifest.devDependencies, manifest.peerDependencies]) {
       expect(dependencies["@deepseek-ai/dsh-client-runtime"]).toBeUndefined();
       for (const [name, version] of Object.entries(dependencies)) {
-        if (name.startsWith("@deepseek-ai/dsh-")) expect(version).toBe("0.1.2-alpha.3");
+        if (name.startsWith("@deepseek-ai/dsh-")) expect(version).toBe("0.1.2-rc.1");
       }
     }
   });
