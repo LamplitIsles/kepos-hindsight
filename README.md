@@ -86,6 +86,12 @@ dsh --profile web --dump-config
 The output should include an enabled `kepos-hindsight` row. A running DSH host
 must be restarted after changing its bundle list.
 
+For a published release, install the public package directly:
+
+```bash
+dsh plugin --profile web add @lamplitisles/kepos-hindsight
+```
+
 ## Configuration
 
 Endpoint, credentials, per-bank missions, and the global `disabled` flag stay
@@ -151,6 +157,63 @@ pnpm build
 
 The tests use fake Hindsight HTTP responses and test-owned temporary config
 directories; they never read or modify a live bank.
+
+## Maintainer releases
+
+The release workflow publishes `@lamplitisles/kepos-hindsight` only for a
+semantic-version tag matching `v<semver>`. It verifies a frozen pnpm install,
+typecheck, tests, build, release preflight, and the packed DSH artifact before
+the publish job can run.
+
+### First-time npm and GitHub setup
+
+Before the first trusted release, a maintainer must:
+
+1. Create or claim the `@lamplitisles` npm scope and manually publish the
+   initial beta package with `npm publish --access public --tag beta`.
+2. In npm package settings, add a Trusted Publisher for the `LamplitIsles`
+   GitHub owner, repository `kepos-hindsight`, workflow
+   `.github/workflows/release.yml`, and environment `npm`.
+3. Create the protected GitHub `npm` environment and apply the repository's
+   release approval policy (for example, required reviewers and the allowed
+   release tags).
+
+Trusted Publishing uses GitHub's OIDC identity and npm provenance. Do not add
+an npm authentication token or any other npm credential to this repository or
+its GitHub secrets.
+
+### Routine release
+
+Create and push a tag after the change is ready:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Use a prerelease such as `v0.1.1-beta.1` for beta testing. Stable tags publish
+to npm's `latest` dist-tag; tags containing a prerelease identifier publish to
+`beta`. CI synchronizes the package version to the tag in its disposable
+verification workspace, then publishes only the verified artifact.
+
+To run the release preflight locally without publishing, use a matching tag
+name (the package version in the checkout must match it):
+
+```bash
+GITHUB_REF_NAME=v0.1.0 pnpm release:check
+```
+
+The preflight rejects malformed or mismatched tags, non-public npm metadata,
+and packed artifacts that omit the DSH entry points or include unsafe build
+output. The full local verification remains:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm check
+pnpm test
+pnpm build
+pnpm pack-smoke
+```
 
 ## Design and operating notes
 

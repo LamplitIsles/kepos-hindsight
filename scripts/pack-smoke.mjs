@@ -14,6 +14,7 @@ import vm from "node:vm";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PACKAGE_NAME = "@lamplitisles/kepos-hindsight";
+const PACKAGE_VERSION = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 const ALPHA_VERSION = "0.1.2-alpha.3";
 
 if (!existsSync(join(root, "dist", "dsh.js")) || !existsSync(join(root, "dist", "client.js"))) {
@@ -71,6 +72,10 @@ function dshEntry(env) {
 
 function runDsh(entry, args, cwd, env) {
   return execFileSync(process.execPath, ["--expose-internals", entry, ...args], { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
+function packedManifest(packed) {
+  return Array.isArray(packed) ? packed[0] : Object.values(packed)[0];
 }
 
 function startRuntime(entry, env, cwd) {
@@ -164,14 +169,16 @@ try {
   const env = isolatedEnvironment(temp, home);
   const entry = dshEntry(env);
   const packed = JSON.parse(execFileSync("npm", ["pack", "--json", "--pack-destination", temp], { cwd: root, encoding: "utf8" }));
-  const tarball = join(temp, packed[0].filename);
+  const filename = packedManifest(packed)?.filename;
+  if (typeof filename !== "string") throw new Error("npm pack did not return a tarball name");
+  const tarball = join(temp, filename);
 
   runDsh(entry, ["plugin", "--profile", "web", "add", tarball, "--ignore-scripts"], runtimeCwd, env);
 
   const install = join(home, "profiles", "web");
   const packageDir = join(install, "node_modules", "@lamplitisles", "kepos-hindsight");
   const manifest = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
-  if (manifest.name !== PACKAGE_NAME || manifest.version !== "0.1.0" || manifest.dsh?.client?.platform !== "web") {
+  if (manifest.name !== PACKAGE_NAME || manifest.version !== PACKAGE_VERSION || manifest.dsh?.client?.platform !== "web") {
     throw new Error("installed manifest does not describe the DSH Web bundle");
   }
   const dshPeers = Object.entries(manifest.peerDependencies ?? {}).filter(([name]) => name.startsWith("@deepseek-ai/dsh-"));
