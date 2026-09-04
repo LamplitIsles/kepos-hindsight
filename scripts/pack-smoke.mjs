@@ -15,7 +15,7 @@ import vm from "node:vm";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PACKAGE_NAME = "@lamplitisles/kepos-hindsight";
 const PACKAGE_VERSION = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
-const ALPHA_VERSION = "0.1.2-alpha.5";
+const DSH_VERSION = "0.1.2-rc.1";
 
 if (!existsSync(join(root, "dist", "dsh.js")) || !existsSync(join(root, "dist", "client.js"))) {
   throw new Error("pack-smoke requires a fresh `pnpm build`");
@@ -53,7 +53,7 @@ function dshEntry(env) {
       [
         "exec",
         "--yes",
-        `--package=@deepseek-ai/dsh@${ALPHA_VERSION}`,
+        `--package=@deepseek-ai/dsh@${DSH_VERSION}`,
         "--",
         "sh",
         "-c",
@@ -63,10 +63,10 @@ function dshEntry(env) {
     );
     entry = output.trim().split(/\r?\n/).at(-1);
   }
-  if (!entry || !existsSync(entry)) throw new Error("pack-smoke requires an alpha.5 `dsh` CLI (set DSH_CLI to its path)");
+  if (!entry || !existsSync(entry)) throw new Error("pack-smoke requires an rc.1 `dsh` CLI (set DSH_CLI to its path)");
   entry = realpathSync(entry);
   const version = execFileSync(process.execPath, ["--expose-internals", entry, "--version"], { cwd: root, encoding: "utf8", env }).trim();
-  if (version !== ALPHA_VERSION) throw new Error(`pack-smoke requires dsh ${ALPHA_VERSION}, got ${version}`);
+  if (version !== DSH_VERSION) throw new Error(`pack-smoke requires dsh ${DSH_VERSION}, got ${version}`);
   return entry;
 }
 
@@ -182,8 +182,8 @@ try {
     throw new Error("installed manifest does not describe the DSH Web bundle");
   }
   const dshPeers = Object.entries(manifest.peerDependencies ?? {}).filter(([name]) => name.startsWith("@deepseek-ai/dsh-"));
-  if (dshPeers.some(([, version]) => version !== ALPHA_VERSION) || dshPeers.some(([name]) => name === "@deepseek-ai/dsh-client-runtime")) {
-    throw new Error("installed manifest contains a retired or non-alpha DSH peer");
+  if (dshPeers.some(([, version]) => version !== DSH_VERSION) || dshPeers.some(([name]) => name === "@deepseek-ai/dsh-client-runtime")) {
+    throw new Error("installed manifest contains a retired or non-rc.1 DSH peer");
   }
   const expectedInject = [
     "@deepseek-ai/dsh-api-remotes",
@@ -196,7 +196,7 @@ try {
     "@deepseek-ai/dsh-client-ui-slots",
   ];
   if (JSON.stringify(manifest.dsh?.client?.inject) !== JSON.stringify(expectedInject)) {
-    throw new Error("installed manifest has an unexpected alpha client provider graph");
+    throw new Error("installed manifest has an unexpected rc.1 client provider graph");
   }
   const patch = readFileSync(join(packageDir, "cordis.patch.yml"), "utf8");
   for (const required of ["kepos-hindsight", PACKAGE_NAME, "agents", "settings", "systemPrompt", "tools"]) {
@@ -234,7 +234,7 @@ try {
     clientCode.includes("dsh-client-runtime") ||
     clientCode.includes("createObjectURL")
   ) {
-    throw new Error("served client loader or external alpha contract is missing");
+    throw new Error("served client loader or external rc.1 contract is missing");
   }
 
   const settings = await jsonRequest(runtime.baseUrl, "/api/settings/describe", {
@@ -255,7 +255,7 @@ try {
     throw new Error(`installed Host Settings registration did not activate: ${JSON.stringify(settings.value)}`);
   }
 
-  console.log(`pack-smoke: installed ${PACKAGE_NAME}; alpha.5 Host Settings, Web bootstrap, and client Loader verified`);
+  console.log(`pack-smoke: installed ${PACKAGE_NAME}; rc.1 Host Settings, Web bootstrap, and client Loader verified`);
 } finally {
   if (runtime) await stopRuntime(runtime.child);
   rmSync(temp, { recursive: true, force: true });

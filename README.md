@@ -5,8 +5,8 @@ companion-style DSH agent. It replaces only DSH's official *coding-agent*
 adapter. Codex can keep using the official coding-agent hooks and the same
 `~/.hindsight/coding-agent.json` file.
 
-The package targets the exact DSH `0.1.2-alpha.5` Host and Web client contract;
-use a matching alpha.5 DSH runtime when installing it as a bundle.
+The package targets the exact DSH `0.1.2-rc.1` Host and Web client contract;
+use a matching rc.1 DSH runtime when installing it as a bundle.
 
 ## What it does
 
